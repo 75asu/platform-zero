@@ -1,0 +1,113 @@
+---
+# Role: k3d
+# Installs k3d + kubectl and creates a multi-node cluster via Docker.
+# No sudo required — assumes the target user has Docker socket access.
+# Binaries go to ~/.local/bin/ (user-owned, no root needed).
+
+# ── Ensure ~/.local/bin exists ────────────────────────────────────────────────
+
+- name: Ensure ~/.local/bin exists
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.local/bin"
+    state: directory
+    mode: "0755"
+
+- name: Ensure ~/.local/bin is in PATH
+  ansible.builtin.lineinfile:
+    path: "/home/{{ ansible_user }}/.bashrc"
+    line: 'export PATH="$HOME/.local/bin:$PATH"'
+    regexp: '\.local/bin'
+    state: present
+
+# ── Install k3d ───────────────────────────────────────────────────────────────
+
+- name: Check if k3d is installed
+  ansible.builtin.stat:
+    path: "/home/{{ ansible_user }}/.local/bin/k3d"
+  register: k3d_bin
+
+- name: Install k3d {{ k3d_version }}
+  ansible.builtin.shell:
+    cmd: >
+      curl -sfLo /home/{{ ansible_user }}/.local/bin/k3d
+      https://github.com/k3d-io/k3d/releases/download/{{ k3d_version }}/k3d-linux-amd64
+      && chmod +x /home/{{ ansible_user }}/.local/bin/k3d
+    creates: "/home/{{ ansible_user }}/.local/bin/k3d"
+  # Direct binary download — no install script, no sudo needed.
+
+- name: Verify k3d
+  ansible.builtin.command:
+    cmd: "/home/{{ ansible_user }}/.local/bin/k3d version"
+  changed_when: false
+  register: k3d_ver
+- ansible.builtin.debug:
+    msg: "{{ k3d_ver.stdout }}"
+
+# ── Install kubectl ───────────────────────────────────────────────────────────
+
+- name: Install kubectl {{ kubectl_version }}
+  ansible.builtin.shell:
+    cmd: >
+      curl -sfLo /home/{{ ansible_user }}/.local/bin/kubectl
+      https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/amd64/kubectl
+      && chmod +x /home/{{ ansible_user }}/.local/bin/kubectl
+    creates: "/home/{{ ansible_user }}/.local/bin/kubectl"
+
+# ── Create cluster ────────────────────────────────────────────────────────────
+
+- name: Check if cluster exists
+  ansible.builtin.command:
+    cmd: "/home/{{ ansible_user }}/.local/bin/k3d cluster list -o json"
+  register: cluster_list
+  changed_when: false
+
+- name: Create k3d cluster {{ k3d_cluster_name }}
+  ansible.builtin.command:
+    cmd: >
+      /home/{{ ansible_user }}/.local/bin/k3d cluster create {{ k3d_cluster_name }}
+      --servers {{ k3d_servers }}
+      --agents  {{ k3d_agents }}
+      --image   rancher/k3s:{{ k3s_version }}
+      --api-port {{ k3d_api_port }}
+      --port "{{ argocd_nodeport }}:{{ argocd_nodeport }}@server:0"
+      --port "{{ gitea_nodeport }}:{{ gitea_nodeport }}@server:0"
+      --port "{{ gitea_ssh_nodeport }}:{{ gitea_ssh_nodeport }}@server:0"
+      --k3s-arg "--disable=traefik@server:*"
+      --k3s-arg "--disable=servicelb@server:*"
+      --k3s-arg "--tls-san={{ server_ip }}@server:*"
+      --wait
+  # --tls-san adds SERVER_IP to the API server TLS cert SANs.
+  # Without this, kubectl from outside the host gets an x509 error.
+  when: k3d_cluster_name not in cluster_list.stdout
+  environment:
+    HOME: "/home/{{ ansible_user }}"
+    PATH: "/home/{{ ansible_user }}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# ── Kubeconfig ────────────────────────────────────────────────────────────────
+
+- name: Ensure ~/.kube exists
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.kube"
+    state: directory
+    mode: "0755"
+
+- name: Write kubeconfig
+  ansible.builtin.shell:
+    cmd: >
+      /home/{{ ansible_user }}/.local/bin/k3d kubeconfig get {{ k3d_cluster_name }}
+      > /home/{{ ansible_user }}/.kube/config
+  changed_when: true
+  environment:
+    HOME: "/home/{{ ansible_user }}"
+
+- name: Set kubeconfig permissions
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.kube/config"
+    mode: "0600"
+
+- name: Replace 0.0.0.0 with SERVER_IP in kubeconfig
+  ansible.builtin.replace:
+    path: "/home/{{ ansible_user }}/.kube/config"
+    regexp: '0\.0\.0\.0'
+    replace: "{{ server_ip }}"
+  when: server_ip != ""

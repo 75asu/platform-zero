@@ -1,0 +1,28 @@
+---
+# cloudflared — ArgoCD Application.
+# Points at cluster/base/cloudflared/ in Gitea.
+# Credentials Secret + ConfigMap are pre-created by bootstrap.yaml.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudflared
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: "http://gitea-http.gitea.svc.cluster.local:3000/admin/platform-zero.git"
+    targetRevision: main
+    path: cluster/base/cloudflared
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cloudflared
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

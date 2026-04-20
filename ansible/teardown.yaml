@@ -1,0 +1,32 @@
+---
+# teardown.yaml — full cluster teardown.
+# Deletes the k3d cluster via Docker. No sudo needed.
+# All workloads (Gitea, ArgoCD, everything) are destroyed with the cluster.
+# The host machine is completely untouched.
+#
+# Called by: make down
+
+- name: Teardown k3d cluster
+  hosts: all
+  become: false
+
+  tasks:
+    - name: Delete k3d cluster {{ k3d_cluster_name }}
+      ansible.builtin.command:
+        cmd: "/home/{{ ansible_user }}/.local/bin/k3d cluster delete {{ k3d_cluster_name }}"
+      register: delete_result
+      failed_when:
+        - delete_result.rc != 0
+        - "'No clusters found' not in delete_result.stderr"
+      changed_when: delete_result.rc == 0
+      environment:
+        HOME: "/home/{{ ansible_user }}"
+
+    - name: Remove kubeconfig from host
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/.kube/config"
+        state: absent
+
+    - name: Done
+      ansible.builtin.debug:
+        msg: "Teardown complete. Cluster is gone. Host machine is untouched."

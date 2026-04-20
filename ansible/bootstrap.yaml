@@ -1,0 +1,704 @@
+---
+# bootstrap.yaml — installs Gitea + ArgoCD into the cluster via Helm.
+# Runs on localhost using the fetched kubeconfig. No SSH needed.
+#
+# Credential generation:
+#   - GITEA_ADMIN_PASSWORD: auto-generated if blank in .env, saved back before install
+#   - ARGOCD_ADMIN_PASSWORD: fetched from cluster secret, saved back after install
+#   User never needs to touch .env manually.
+#
+# Called by: make bootstrap
+# Requires:  kubeconfig.yaml exists (run make cluster first)
+
+- name: Bootstrap Gitea and ArgoCD
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    kubeconfig:        "{{ playbook_dir }}/../kubeconfig.yaml"
+    server_ip:         "{{ lookup('env', 'SERVER_IP') }}"
+    gitea_nodeport:    "{{ lookup('env', 'GITEA_NODEPORT') }}"
+    gitea_admin_user:  "admin"
+    gitea_admin_email: "{{ lookup('env', 'GITEA_ADMIN_EMAIL') }}"
+    repo_name:         "{{ lookup('env', 'REPO_NAME') }}"
+    argocd_nodeport:   "{{ lookup('env', 'ARGOCD_NODEPORT') }}"
+
+  environment:
+    KUBECONFIG: "{{ playbook_dir }}/../kubeconfig.yaml"
+
+  tasks:
+
+    # ── Credential generation ──────────────────────────────────────────────────
+    - name: Generate Gitea password
+      ansible.builtin.set_fact:
+        gitea_admin_pass: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}"
+
+    - name: Save Gitea credentials to .env
+      ansible.builtin.lineinfile:
+        path: "{{ playbook_dir }}/../.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+        state: present
+      loop:
+        - { key: "GITEA_ADMIN_USER",     value: "{{ gitea_admin_user }}" }
+        - { key: "GITEA_ADMIN_PASSWORD", value: "{{ gitea_admin_pass }}" }
+
+    # ── Namespaces ─────────────────────────────────────────────────────────────
+    - name: Apply bootstrap namespaces
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        src: "{{ playbook_dir }}/files/namespaces.yaml"
+        state: present
+
+    # ── Gitea ──────────────────────────────────────────────────────────────────
+    - name: Add Gitea Helm repo
+      ansible.builtin.command:
+        cmd: helm repo add gitea-charts https://dl.gitea.com/charts/ --force-update
+      changed_when: false
+
+    - name: Update Gitea Helm repo
+      ansible.builtin.command:
+        cmd: helm repo update gitea-charts
+      changed_when: false
+
+    - name: Write Gitea values file
+      ansible.builtin.copy:
+        dest: /tmp/gitea-values.yaml
+        content: |
+          image:
+            rootless: true
+          gitea:
+            admin:
+              username: "{{ gitea_admin_user }}"
+              password: "{{ gitea_admin_pass }}"
+              email: "{{ gitea_admin_email }}"
+            config:
+              server:
+                HTTP_PORT: 3000
+                ROOT_URL: "http://{{ server_ip }}:{{ gitea_nodeport }}"
+              packages:
+                ENABLED: "true"
+              database:
+                DB_TYPE: sqlite3
+              session:
+                PROVIDER: memory
+              cache:
+                ADAPTER: memory
+              actions:
+                ENABLED: "true"
+          postgresql-ha:
+            enabled: false
+          postgresql:
+            enabled: false
+          redis-cluster:
+            enabled: false
+          persistence:
+            enabled: true
+            size: 10Gi
+          service:
+            http:
+              type: NodePort
+              nodePort: {{ gitea_nodeport | int }}
+            ssh:
+              type: NodePort
+              nodePort: 30022
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+    - name: Install Gitea via Helm
+      ansible.builtin.command:
+        cmd: >
+          helm upgrade --install gitea gitea-charts/gitea
+          --namespace gitea
+          --values /tmp/gitea-values.yaml
+          --wait --timeout 180s
+      # helm upgrade --install is idempotent — install on first run, upgrade on subsequent
+
+    - name: Wait for Gitea API
+      ansible.builtin.uri:
+        url: "http://{{ server_ip }}:{{ gitea_nodeport }}/api/healthz"
+        method: GET
+      register: gitea_health
+      until: gitea_health.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Create repository in Gitea
+      ansible.builtin.uri:
+        url: "http://{{ server_ip }}:{{ gitea_nodeport }}/api/v1/user/repos"
+        method: POST
+        user: "{{ gitea_admin_user }}"
+        password: "{{ gitea_admin_pass }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "{{ repo_name }}"
+          description: "platform-zero — one-command SRE platform"
+          private: false
+          auto_init: true
+          default_branch: main
+        status_code: [201, 409]
+      # 201 = created, 409 = already exists — both are success
+
+    # ── Gitea Actions runner token ────────────────────────────────────────────
+    - name: Fetch runner registration token from Gitea
+      ansible.builtin.uri:
+        url: "http://{{ server_ip }}:{{ gitea_nodeport }}/api/v1/admin/runners/registration-token"
+        method: GET
+        user: "{{ gitea_admin_user }}"
+        password: "{{ gitea_admin_pass }}"
+        force_basic_auth: true
+      register: runner_token
+
+    # ── ArgoCD ─────────────────────────────────────────────────────────────────
+    - name: Add ArgoCD Helm repo
+      ansible.builtin.command:
+        cmd: helm repo add argo https://argoproj.github.io/argo-helm --force-update
+      changed_when: false
+
+    - name: Update ArgoCD Helm repo
+      ansible.builtin.command:
+        cmd: helm repo update argo
+      changed_when: false
+
+    - name: Write ArgoCD values file
+      ansible.builtin.copy:
+        dest: /tmp/argocd-values.yaml
+        content: |
+          server:
+            service:
+              type: NodePort
+              nodePortHttp: {{ argocd_nodeport | int }}    # HTTP — mapped in k3d, accessible from Mac
+              nodePortHttps: 30444                         # HTTPS — not mapped, won't be used
+          configs:
+            params:
+              server.insecure: "true"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+    - name: Install ArgoCD via Helm
+      ansible.builtin.command:
+        cmd: >
+          helm upgrade --install argocd argo/argo-cd
+          --namespace argocd
+          --values /tmp/argocd-values.yaml
+          --wait --timeout 300s
+
+    - name: Fetch ArgoCD initial admin password
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig }}"
+        kind: Secret
+        name: argocd-initial-admin-secret
+        namespace: argocd
+      register: argocd_secret
+
+    - name: Save ArgoCD credentials to .env
+      ansible.builtin.lineinfile:
+        path: "{{ playbook_dir }}/../.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+        state: present
+      loop:
+        - { key: "ARGOCD_ADMIN_USER",     value: "admin" }
+        - { key: "ARGOCD_ADMIN_PASSWORD", value: "{{ argocd_secret.resources[0].data.password | b64decode }}" }
+      # lineinfile is idempotent — updates if line exists, appends if not.
+      # .env is gitignored — credentials never touch the repo.
+
+    # ── Vault ─────────────────────────────────────────────────────────────────
+
+    - name: Add HashiCorp Helm repo
+      ansible.builtin.command:
+        cmd: helm repo add hashicorp https://helm.releases.hashicorp.com --force-update
+      changed_when: false
+
+    - name: Update HashiCorp Helm repo
+      ansible.builtin.command:
+        cmd: helm repo update hashicorp
+      changed_when: false
+
+    - name: Write Vault values file
+      ansible.builtin.copy:
+        dest: /tmp/vault-values.yaml
+        content: |
+          server:
+            standalone:
+              enabled: true
+              config: |
+                ui = false
+                listener "tcp" {
+                  address     = "0.0.0.0:8200"
+                  tls_disable = true
+                }
+                storage "raft" {
+                  path = "/vault/data"
+                }
+                api_addr     = "http://vault.vault.svc.cluster.local:8200"
+                cluster_addr = "https://vault.vault.svc.cluster.local:8201"
+            dataStorage:
+              enabled: true
+              size: 5Gi
+              storageClass: local-path
+            service:
+              type: ClusterIP
+            postStart:
+              - /bin/sh
+              - -c
+              - |
+                sleep 15
+                if [ -f /vault/unseal/key ] && vault status 2>/dev/null | grep -q "Sealed.*true"; then
+                  vault operator unseal "$(cat /vault/unseal/key)"
+                fi
+            volumes:
+              - name: unseal-key
+                secret:
+                  secretName: vault-unseal-keys
+                  optional: true
+            volumeMounts:
+              - name: unseal-key
+                mountPath: /vault/unseal
+                readOnly: true
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+          injector:
+            enabled: false
+          ui:
+            enabled: false
+
+    - name: Install Vault via Helm
+      ansible.builtin.command:
+        cmd: >
+          helm upgrade --install vault hashicorp/vault
+          --namespace vault
+          --values /tmp/vault-values.yaml
+          --timeout 120s
+      # No --wait: Vault readiness probe fails until unsealed — handled below.
+
+    - name: Wait for Vault pod to be in Running phase
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig }}"
+        kind: Pod
+        name: vault-0
+        namespace: vault
+      register: vault_pod
+      until: >
+        vault_pod.resources | length > 0 and
+        vault_pod.resources[0].status.phase == 'Running'
+      retries: 24
+      delay: 10
+
+    - name: Wait for Vault HTTP to respond
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 vault status -format=json"
+      register: vault_status_raw
+      failed_when: false
+      changed_when: false
+      retries: 12
+      delay: 10
+      until: vault_status_raw.rc in [0, 2]
+
+    - name: Set Vault status facts
+      ansible.builtin.set_fact:
+        vault_initialized: "{{ (vault_status_raw.stdout | from_json).initialized }}"
+        vault_sealed: "{{ (vault_status_raw.stdout | from_json).sealed }}"
+
+    - name: Initialize Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 vault operator init
+          -key-shares=1 -key-threshold=1 -format=json"
+      register: vault_init_raw
+      when: not vault_initialized
+
+    - name: Set Vault init facts
+      ansible.builtin.set_fact:
+        vault_unseal_key: "{{ (vault_init_raw.stdout | from_json).unseal_keys_b64[0] }}"
+        vault_root_token: "{{ (vault_init_raw.stdout | from_json).root_token }}"
+      when: not vault_initialized
+
+    - name: Save Vault credentials to .env
+      ansible.builtin.lineinfile:
+        path: "{{ playbook_dir }}/../.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+        state: present
+      loop:
+        - { key: "VAULT_UNSEAL_KEY", value: "{{ vault_unseal_key }}" }
+        - { key: "VAULT_ROOT_TOKEN", value: "{{ vault_root_token }}" }
+      when: not vault_initialized
+
+    - name: Read Vault credentials from .env
+      ansible.builtin.shell:
+        cmd: |
+          grep '^VAULT_UNSEAL_KEY=' {{ playbook_dir }}/../.env | cut -d= -f2-
+          grep '^VAULT_ROOT_TOKEN=' {{ playbook_dir }}/../.env | cut -d= -f2-
+      register: vault_creds_from_env
+      changed_when: false
+      when: vault_initialized
+
+    - name: Set Vault credential facts from .env
+      ansible.builtin.set_fact:
+        vault_unseal_key: "{{ vault_creds_from_env.stdout_lines[0] }}"
+        vault_root_token: "{{ vault_creds_from_env.stdout_lines[1] }}"
+      when: vault_initialized
+
+    - name: Create vault-unseal-keys K8s Secret
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: vault-unseal-keys
+            namespace: vault
+          type: Opaque
+          stringData:
+            key: "{{ vault_unseal_key }}"
+
+    - name: Unseal Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 vault operator unseal {{ vault_unseal_key }}"
+      when: vault_sealed
+
+    - name: Wait for Vault to be unsealed
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 vault status -format=json"
+      register: vault_unsealed_check
+      until: (vault_unsealed_check.stdout | from_json).sealed == false
+      retries: 12
+      delay: 5
+      changed_when: false
+      failed_when: vault_unsealed_check.rc == 1
+
+    - name: Enable KV v2 secrets engine
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault secrets enable -path=secret kv-v2"
+      register: kv_enable
+      failed_when: kv_enable.rc != 0 and 'path is already in use' not in kv_enable.stderr
+      changed_when: kv_enable.rc == 0
+
+    - name: Enable Kubernetes auth method
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault auth enable kubernetes"
+      register: k8s_auth_enable
+      failed_when: k8s_auth_enable.rc != 0 and 'path is already in use' not in k8s_auth_enable.stderr
+      changed_when: k8s_auth_enable.rc == 0
+
+    - name: Configure Kubernetes auth method
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc:443"
+      changed_when: true
+
+    - name: Write ESO policy file to Vault pod
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "printf 'path \"secret/data/*\" { capabilities = [\"read\"] }\npath \"secret/metadata/*\" { capabilities = [\"read\", \"list\"] }' > /tmp/eso-policy.hcl"
+      changed_when: true
+
+    - name: Apply ESO policy in Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault policy write external-secrets /tmp/eso-policy.hcl"
+      changed_when: true
+
+    - name: Create ESO Vault role
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault write auth/kubernetes/role/external-secrets
+          bound_service_account_names=external-secrets
+          bound_service_account_namespaces=external-secrets
+          policies=external-secrets ttl=1h"
+      changed_when: true
+
+    - name: Seed Gitea credentials into Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault kv put secret/gitea
+          admin_user={{ gitea_admin_user }} admin_password={{ gitea_admin_pass }}"
+      changed_when: true
+
+    - name: Seed ArgoCD credentials into Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault kv put secret/argocd
+          admin_password={{ argocd_secret.resources[0].data.password | b64decode }}"
+      changed_when: true
+
+    - name: Generate Grafana admin password
+      ansible.builtin.set_fact:
+        grafana_admin_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}"
+
+    - name: Seed Grafana credentials into Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault kv put secret/grafana
+          admin_user=admin admin_password={{ grafana_admin_password }}"
+      changed_when: true
+
+    - name: Save Grafana admin password to .env
+      ansible.builtin.lineinfile:
+        path: "{{ playbook_dir }}/../.env"
+        regexp: "^GRAFANA_ADMIN_PASSWORD="
+        line: "GRAFANA_ADMIN_PASSWORD={{ grafana_admin_password }}"
+        state: present
+
+    - name: Seed act-runner token into Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault kv put secret/act-runner token={{ runner_token.json.token }}"
+      changed_when: true
+
+    - name: Check if MinIO credentials already exist in Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault kv get secret/minio"
+      register: minio_vault_check
+      failed_when: false
+      changed_when: false
+
+    - name: Generate MinIO credentials
+      ansible.builtin.set_fact:
+        minio_access_key: "{{ lookup('password', '/dev/null length=16 chars=ascii_letters,digits') }}"
+        minio_secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+      when: minio_vault_check.rc != 0
+
+    - name: Save MinIO credentials to .env
+      ansible.builtin.lineinfile:
+        path: "{{ playbook_dir }}/../.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+        state: present
+      loop:
+        - { key: "MINIO_ACCESS_KEY", value: "{{ minio_access_key }}" }
+        - { key: "MINIO_SECRET_KEY", value: "{{ minio_secret_key }}" }
+      when: minio_vault_check.rc != 0
+
+    - name: Seed MinIO credentials into Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault kv put secret/minio
+          access_key={{ minio_access_key }} secret_key={{ minio_secret_key }}"
+      when: minio_vault_check.rc != 0
+      changed_when: true
+
+    # ── Cloudflare Tunnel ─────────────────────────────────────────────────────
+    # Skipped entirely if CLOUDFLARE_API_TOKEN is not set.
+
+    - name: Check if Cloudflare is configured
+      ansible.builtin.set_fact:
+        cloudflare_enabled: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN') != '' }}"
+
+    - name: Get Cloudflare account ID
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/accounts"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+      register: cf_accounts
+      when: cloudflare_enabled
+      no_log: true
+
+    - name: Get Cloudflare zone ID
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones?name={{ lookup('env', 'CLOUDFLARE_DOMAIN') }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+      register: cf_zones
+      when: cloudflare_enabled
+      no_log: true
+
+    - name: Set Cloudflare account and zone IDs
+      ansible.builtin.set_fact:
+        cf_account_id: "{{ cf_accounts.json.result[0].id }}"
+        cf_zone_id: "{{ cf_zones.json.result[0].id }}"
+      when: cloudflare_enabled
+
+    - name: Check if tunnel already exists
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/accounts/{{ cf_account_id }}/cfd_tunnel?name=platform-zero&is_deleted=false"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+      register: cf_existing_tunnels
+      when: cloudflare_enabled
+      no_log: true
+
+    - name: Generate tunnel secret
+      ansible.builtin.set_fact:
+        cf_tunnel_secret: "{{ lookup('pipe', 'openssl rand -base64 32') | trim }}"
+      when: cloudflare_enabled and cf_existing_tunnels.json.result | length == 0
+
+    - name: Create Cloudflare tunnel
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/accounts/{{ cf_account_id }}/cfd_tunnel"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "platform-zero"
+          tunnel_secret: "{{ cf_tunnel_secret }}"
+          config_src: "local"
+        status_code: [200]
+      register: cf_new_tunnel
+      when: cloudflare_enabled and cf_existing_tunnels.json.result | length == 0
+      no_log: true
+
+    - name: Set tunnel facts (new tunnel)
+      ansible.builtin.set_fact:
+        cf_tunnel_id: "{{ cf_new_tunnel.json.result.id }}"
+        cf_creds_json: "{{ {'AccountTag': cf_account_id, 'TunnelSecret': cf_tunnel_secret, 'TunnelID': cf_new_tunnel.json.result.id} | to_json }}"
+      when: cloudflare_enabled and cf_existing_tunnels.json.result | length == 0
+
+    - name: Set tunnel facts (existing tunnel)
+      ansible.builtin.set_fact:
+        cf_tunnel_id: "{{ cf_existing_tunnels.json.result[0].id }}"
+      when: cloudflare_enabled and cf_existing_tunnels.json.result | length > 0
+
+    - name: Write cloudflare credentials to local temp file
+      ansible.builtin.copy:
+        content: "{{ cf_creds_json }}"
+        dest: /tmp/platform-zero-cf-creds.json
+      when: cloudflare_enabled and cf_existing_tunnels.json.result | length == 0
+
+    - name: Copy cloudflare credentials into Vault pod
+      ansible.builtin.command:
+        cmd: >
+          kubectl --kubeconfig={{ kubeconfig }} cp
+          /tmp/platform-zero-cf-creds.json
+          vault/vault-0:/tmp/cf-creds.json
+      when: cloudflare_enabled and cf_existing_tunnels.json.result | length == 0
+
+    - name: Seed cloudflare credentials into Vault
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --kubeconfig={{ kubeconfig }} exec -n vault vault-0 --
+          sh -c "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN={{ vault_root_token }}
+          vault kv put secret/cloudflare creds_json=@/tmp/cf-creds.json"
+      when: cloudflare_enabled and cf_existing_tunnels.json.result | length == 0
+      changed_when: true
+
+    - name: Create cloudflared namespace
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: cloudflared
+      when: cloudflare_enabled
+
+    - name: Create cloudflared config ConfigMap
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: cloudflared-config
+            namespace: cloudflared
+          data:
+            config.yaml: |
+              tunnel: {{ cf_tunnel_id }}
+              credentials-file: /etc/cloudflared/creds.json
+              ingress:
+                - hostname: grafana.{{ lookup('env', 'CLOUDFLARE_DOMAIN') }}
+                  service: http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80
+                - hostname: prometheus.{{ lookup('env', 'CLOUDFLARE_DOMAIN') }}
+                  service: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+                - hostname: argocd.{{ lookup('env', 'CLOUDFLARE_DOMAIN') }}
+                  service: http://argocd-server.argocd.svc.cluster.local:80
+                - hostname: gitea.{{ lookup('env', 'CLOUDFLARE_DOMAIN') }}
+                  service: http://gitea-http.gitea.svc.cluster.local:3000
+                - service: http_status:404
+      when: cloudflare_enabled
+
+    - name: Create Cloudflare DNS records
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_id }}/dns_records"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          type: CNAME
+          name: "{{ item }}"
+          content: "{{ cf_tunnel_id }}.cfargotunnel.com"
+          proxied: true
+        status_code: [200, 400]
+      loop:
+        - "grafana"
+        - "argocd"
+        - "gitea"
+        - "prometheus"
+      when: cloudflare_enabled
+      no_log: true
+
+    - name: Print access info
+      ansible.builtin.debug:
+        msg:
+          - "Bootstrap complete."
+          - ""
+          - "Gitea:   http://{{ server_ip }}:{{ gitea_nodeport }}"
+          - "  User:     {{ gitea_admin_user }}"
+          - "  Password: {{ gitea_admin_pass }}"
+          - ""
+          - "ArgoCD:  http://{{ server_ip }}:{{ argocd_nodeport }}"
+          - "  User:     admin"
+          - "  Password: {{ argocd_secret.resources[0].data.password | b64decode }}"
+          - ""
+          - "All credentials saved to .env"

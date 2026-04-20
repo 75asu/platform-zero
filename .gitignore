@@ -1,0 +1,13 @@
+# credentials — never commit
+.env
+
+# generated from template by Makefile — contains real IPs/users
+ansible/inventory/hosts.yaml
+
+# kubeconfig fetched from cluster
+kubeconfig.yaml
+
+# editor
+.DS_Store
+*.swp
+*.swo

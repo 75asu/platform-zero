@@ -1,0 +1,35 @@
+---
+# root-app.yaml — the App of Apps.
+# This is the single ArgoCD Application applied manually (once).
+# It points at cluster/apps/ in Gitea.
+# ArgoCD then discovers and deploys every app defined there.
+#
+# After this is applied, Git IS the control plane.
+# Never kubectl apply anything in cluster/apps/ directly again.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: "http://gitea-http.gitea.svc.cluster.local:3000/admin/platform-zero.git"
+    targetRevision: main
+    path: cluster
+    directory:
+      recurse: false
+      include: "*.yaml"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true      # remove resources deleted from Git
+      selfHeal: true   # revert manual kubectl changes
+    syncOptions:
+      - CreateNamespace=true

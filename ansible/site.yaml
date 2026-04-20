@@ -1,0 +1,13 @@
+---
+# site.yaml — OS layer only.
+# Installs k3d, creates a 3-node cluster, writes kubeconfig.
+# Nothing application-level goes here — that's ArgoCD's job.
+#
+# Called by: make cluster
+
+- name: Bootstrap k3d cluster
+  hosts: all
+  become: false
+
+  roles:
+    - role: k3d

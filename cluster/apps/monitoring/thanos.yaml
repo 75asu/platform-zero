@@ -1,0 +1,83 @@
+---
+# Thanos — long-term metric storage + federated query layer.
+# Query federates across live Prometheus (via sidecar) + historical data from MinIO.
+# Grafana points at Thanos Query instead of Prometheus directly.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: thanos
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://charts.bitnami.com/bitnami
+    chart: thanos
+    targetRevision: "*"
+    helm:
+      values: |
+        # Override image to official quay.io — Bitnami docker.io images require auth since Broadcom acquisition
+        image:
+          registry: quay.io
+          repository: thanos/thanos
+          tag: v0.39.2
+
+        existingObjstoreSecret: thanos-objstore-secret
+
+        query:
+          enabled: true
+          stores:
+            - prometheus-operated.monitoring.svc.cluster.local:10901
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+        storegateway:
+          enabled: true
+          persistence:
+            enabled: true
+            size: 10Gi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+        compactor:
+          enabled: true
+          persistence:
+            enabled: true
+            size: 10Gi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+        # Disable components we're not using
+        receive:
+          enabled: false
+        ruler:
+          enabled: false
+        queryFrontend:
+          enabled: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,6 @@
+---
+# Ansible collection dependencies.
+# Install with: ansible-galaxy collection install -r ansible/requirements.yaml
+collections:
+  - name: kubernetes.core
+    version: ">=3.0.0"

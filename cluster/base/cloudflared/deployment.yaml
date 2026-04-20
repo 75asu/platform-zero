@@ -1,0 +1,61 @@
+---
+# cloudflared — Cloudflare Tunnel daemon.
+# Makes outbound connections to Cloudflare so services are reachable
+# at *.binarysquad.org without any inbound ports or firewall rules.
+#
+# Credentials Secret and config ConfigMap are created by bootstrap.yaml.
+# This Deployment just mounts them — no secrets in Git.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: cloudflared
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --config
+            - /etc/cloudflared/config.yaml
+            - run
+          volumeMounts:
+            - name: credentials
+              mountPath: /etc/cloudflared/creds.json
+              subPath: creds.json
+              readOnly: true
+            - name: config
+              mountPath: /etc/cloudflared/config.yaml
+              subPath: config.yaml
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: credentials
+          secret:
+            secretName: cloudflared-credentials
+        - name: config
+          configMap:
+            name: cloudflared-config

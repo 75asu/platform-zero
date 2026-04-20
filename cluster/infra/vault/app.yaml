@@ -1,0 +1,78 @@
+---
+# Vault — ArgoCD Application for drift detection and upgrades.
+# Bootstrap (ansible/bootstrap.yaml) handles init, unseal, K8s auth, and secret seeding.
+# This app keeps the Helm release in sync after bootstrap has run.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://helm.releases.hashicorp.com
+    chart: vault
+    targetRevision: "*"
+    helm:
+      values: |
+        server:
+          standalone:
+            enabled: true
+            config: |
+              ui = false
+              listener "tcp" {
+                address     = "0.0.0.0:8200"
+                tls_disable = true
+              }
+              storage "raft" {
+                path = "/vault/data"
+              }
+              api_addr     = "http://vault.vault.svc.cluster.local:8200"
+              cluster_addr = "https://vault.vault.svc.cluster.local:8201"
+          dataStorage:
+            enabled: true
+            size: 5Gi
+            storageClass: local-path
+          service:
+            type: ClusterIP
+          postStart:
+            - /bin/sh
+            - -c
+            - |
+              sleep 15
+              if [ -f /vault/unseal/key ] && vault status 2>/dev/null | grep -q "Sealed.*true"; then
+                vault operator unseal "$(cat /vault/unseal/key)"
+              fi
+          volumes:
+            - name: unseal-key
+              secret:
+                secretName: vault-unseal-keys
+                optional: true
+          volumeMounts:
+            - name: unseal-key
+              mountPath: /vault/unseal
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+        injector:
+          enabled: false
+        ui:
+          enabled: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

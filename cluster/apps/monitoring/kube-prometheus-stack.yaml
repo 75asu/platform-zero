@@ -1,0 +1,117 @@
+---
+# kube-prometheus-stack — Prometheus + Grafana + Alertmanager + node-exporter + kube-state-metrics.
+# Thanos sidecar enabled — uploads metric blocks to MinIO every 2h.
+# Grafana exposed on NodePort 30090 with Loki, Tempo, and Thanos pre-configured as datasources.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: "*"
+    helm:
+      values: |
+        grafana:
+          admin:
+            existingSecret: grafana-admin-secret
+            userKey: admin-user
+            passwordKey: admin-password
+          service:
+            type: ClusterIP
+          additionalDataSources:
+            - name: Loki
+              type: loki
+              url: http://loki.monitoring.svc.cluster.local:3100
+              access: proxy
+              isDefault: false
+            - name: Tempo
+              type: tempo
+              url: http://tempo.monitoring.svc.cluster.local:3100
+              access: proxy
+              isDefault: false
+            - name: Thanos
+              type: prometheus
+              url: http://thanos-query.monitoring.svc.cluster.local:9090
+              access: proxy
+              isDefault: false
+          sidecar:
+            dashboards:
+              enabled: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+        prometheus:
+          thanosService:
+            enabled: true
+          prometheusSpec:
+            retention: 4h
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: local-path
+                  resources:
+                    requests:
+                      storage: 20Gi
+            thanos:
+              objectStorageConfig:
+                secretKeyRef:
+                  name: thanos-objstore-secret
+                  key: objstore.yml
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+
+        alertmanager:
+          alertmanagerSpec:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 128Mi
+
+        nodeExporter:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
+        kubeStateMetrics:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

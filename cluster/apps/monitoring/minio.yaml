@@ -1,0 +1,54 @@
+---
+# MinIO — S3-compatible object store for Thanos long-term metric storage.
+# Using official MinIO chart (charts.min.io) — Bitnami images require auth since Broadcom acquisition.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: minio
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://charts.min.io/
+    chart: minio
+    targetRevision: "*"
+    helm:
+      values: |
+        mode: standalone
+        replicas: 1
+
+        existingSecret: minio-credentials
+
+        buckets:
+          - name: thanos
+            policy: none
+            purge: false
+
+        persistence:
+          enabled: true
+          size: 20Gi
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        service:
+          type: ClusterIP
+          port: 9000
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

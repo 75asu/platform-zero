@@ -1,0 +1,32 @@
+---
+# Shared variables for all hosts.
+# Machine-specific values (IPs, users, passwords) live in .env — not here.
+# Everything here is safe to commit.
+
+# ── k3d ───────────────────────────────────────────────────────────────────────
+k3d_version: "v5.8.3"
+k3d_cluster_name: "platform-zero"
+
+# Cluster topology
+k3d_servers: 1   # control plane nodes (increase to 3 for etcd HA)
+k3d_agents: 1    # worker nodes (add more as workload grows)
+
+# API server port — exposed on the homelab host, accessed by kubectl from Mac
+k3d_api_port: 6443
+
+# ── k3s (the distro k3d runs inside each container) ──────────────────────────
+k3s_version: "v1.31.4-k3s1"   # pinned — reproducible cluster every time
+
+# kubectl version to install on the homelab (should match k3s minor version)
+kubectl_version: "v1.31.0"
+
+# ── NodePorts ─────────────────────────────────────────────────────────────────
+# These are mapped from the homelab host → k3d server container at cluster create time.
+# Adding new NodePorts later requires recreating the cluster (k3d limitation).
+# Plan all NodePorts upfront.
+argocd_nodeport: 30080
+gitea_nodeport: 30300
+gitea_ssh_nodeport: 30022
+
+# ── Kubeconfig ────────────────────────────────────────────────────────────────
+server_ip: "{{ lookup('env', 'SERVER_IP') }}"

@@ -1,0 +1,83 @@
+---
+# gitops.yaml — pushes manifests to Gitea and activates the ArgoCD root app.
+# After this, Git is the control plane. Never kubectl apply cluster/apps/ directly.
+#
+# Called by: make gitops
+
+- name: Activate GitOps loop
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    kubeconfig:       "{{ playbook_dir }}/../kubeconfig.yaml"
+    env_file:         "{{ playbook_dir }}/../.env"
+    server_ip:        "{{ lookup('env', 'SERVER_IP') }}"
+    gitea_nodeport:   "{{ lookup('env', 'GITEA_NODEPORT') }}"
+    repo_name:        "{{ lookup('env', 'REPO_NAME') }}"
+
+  tasks:
+
+    # ── Read credentials fresh from .env (bootstrap may have just rotated them) ─
+    - name: Read Gitea credentials from .env
+      ansible.builtin.shell:
+        cmd: |
+          grep '^GITEA_ADMIN_USER=' {{ env_file }} | cut -d= -f2
+          grep '^GITEA_ADMIN_PASSWORD=' {{ env_file }} | cut -d= -f2
+      register: gitea_creds
+      changed_when: false
+
+    - name: Set Gitea credential facts
+      ansible.builtin.set_fact:
+        gitea_admin_user: "{{ gitea_creds.stdout_lines[0] }}"
+        gitea_admin_pass: "{{ gitea_creds.stdout_lines[1] }}"
+        remote_url: "http://{{ gitea_creds.stdout_lines[0] }}:{{ gitea_creds.stdout_lines[1] }}@{{ lookup('env', 'SERVER_IP') }}:{{ lookup('env', 'GITEA_NODEPORT') }}/{{ gitea_creds.stdout_lines[0] }}/{{ lookup('env', 'REPO_NAME') }}.git"
+
+    # ── Git identity ───────────────────────────────────────────────────────────
+    - name: Set git user identity for this repo
+      ansible.builtin.command:
+        cmd: git config {{ item.key }} "{{ item.value }}"
+      args:
+        chdir: "{{ playbook_dir }}/.."
+      loop:
+        - { key: "user.name",  value: "{{ lookup('env', 'GIT_USER_NAME') }}" }
+        - { key: "user.email", value: "{{ lookup('env', 'GIT_USER_EMAIL') }}" }
+      changed_when: false
+
+    - name: Add Gitea as git remote
+      ansible.builtin.command:
+        cmd: git remote set-url gitea {{ remote_url }}
+      args:
+        chdir: "{{ playbook_dir }}/.."
+      register: remote_result
+      failed_when: false
+      changed_when: true
+
+    - name: Add gitea remote if it didn't exist
+      ansible.builtin.command:
+        cmd: git remote add gitea {{ remote_url }}
+      args:
+        chdir: "{{ playbook_dir }}/.."
+      when: remote_result.rc != 0
+      failed_when: false
+
+    - name: Push manifests to Gitea
+      ansible.builtin.command:
+        cmd: git -c credential.helper='' push gitea main --force
+      args:
+        chdir: "{{ playbook_dir }}/.."
+      environment:
+        GIT_TERMINAL_PROMPT: "0"
+
+    - name: Apply ArgoCD root app (App of Apps)
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        src: "{{ playbook_dir }}/files/root-app.yaml"
+        state: present
+
+    - name: GitOps loop is active
+      ansible.builtin.debug:
+        msg:
+          - "GitOps loop is active."
+          - "ArgoCD will sync cluster/apps/ within 3 minutes."
+          - "From now on: git push → cluster converges."

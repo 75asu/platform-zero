@@ -1,0 +1,38 @@
+---
+# Bootstrap namespaces — only what the bootstrap step needs.
+# All other namespaces are created by ArgoCD as each phase is added.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitea
+  labels:
+    app.kubernetes.io/managed-by: platform-zero
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app.kubernetes.io/managed-by: platform-zero
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitea-runner
+  labels:
+    app.kubernetes.io/managed-by: platform-zero
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault
+  labels:
+    app.kubernetes.io/managed-by: platform-zero
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets
+  labels:
+    app.kubernetes.io/managed-by: platform-zero

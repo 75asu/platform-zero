@@ -1,0 +1,23 @@
+---
+# setup.yaml — full platform setup in one playbook.
+# Play 1: install k3d + create cluster on the remote host
+# Play 2: fetch kubeconfig from remote to localhost
+# Play 3: install Gitea + ArgoCD from localhost
+#
+# Called by: make up
+
+- name: Install k3d and create cluster
+  ansible.builtin.import_playbook: site.yaml
+
+- name: Fetch kubeconfig to localhost
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Fetch kubeconfig from remote
+      ansible.builtin.fetch:
+        src: "/home/{{ ansible_user }}/.kube/config"
+        dest: "{{ playbook_dir }}/../kubeconfig.yaml"
+        flat: true
+
+- name: Bootstrap Gitea and ArgoCD
+  ansible.builtin.import_playbook: bootstrap.yaml

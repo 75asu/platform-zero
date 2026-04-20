@@ -1,0 +1,64 @@
+---
+# act-runner — Gitea Actions self-hosted runner.
+# Managed by ArgoCD. Token Secret pre-created by bootstrap.yaml.
+# Registers with Gitea at http://gitea-http.gitea.svc.cluster.local:3000
+# Picks up any workflow job with runs-on: ubuntu-latest.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: act-runner
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://dl.gitea.com/charts/
+    chart: actions
+    targetRevision: "0.1.0"
+    helm:
+      values: |
+        enabled: true
+
+        giteaRootURL: "http://gitea-http.gitea.svc.cluster.local:3000"
+
+        existingSecret: act-runner-token
+        existingSecretKey: token
+
+        statefulset:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          actRunner:
+            config: |
+              log:
+                level: info
+              cache:
+                enabled: false
+              container:
+                require_docker: true
+                docker_timeout: 300s
+
+          dind:
+            extraEnvs:
+              - name: DOCKER_IPTABLES_LEGACY
+                value: "1"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gitea-runner
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

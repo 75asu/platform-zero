@@ -1,0 +1,32 @@
+---
+# infra — platform layer (Vault, ESO).
+# Must be Healthy before apps layer starts.
+# Root-app deploys this at wave 0.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infra
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+
+  source:
+    repoURL: "http://gitea-http.gitea.svc.cluster.local:3000/admin/platform-zero.git"
+    targetRevision: main
+    path: cluster/infra
+    directory:
+      recurse: true
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
