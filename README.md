@@ -57,7 +57,7 @@ Every component is real: not a tutorial toy, not a hello-world demo. The same pa
                               *.yourdomain.com
 ```
 
-**GitOps loop:** Every change goes through `git push`. ArgoCD detects the diff in Gitea and reconciles. `kubectl apply` is never used after bootstrap.
+**GitOps loop:** Every manifest change goes through `make push` → Gitea → ArgoCD reconciles. `kubectl apply` is never used after bootstrap.
 
 **Secret flow:**
 ```
@@ -73,6 +73,40 @@ Every component is real: not a tutorial toy, not a hello-world demo. The same pa
 ```
 
 No secrets ever touch the Git repository.
+
+---
+
+## Git workflow
+
+Two remotes, two purposes — never mixed:
+
+| Remote | Provider | Branch | Purpose |
+|--------|----------|--------|---------|
+| `origin` | GitHub | `main` | Public portfolio history. Curated commits. Manual push only. |
+| `gitea` | Self-hosted Gitea | `cluster` | ArgoCD's Git backend. Operational history. Force-pushed freely. |
+
+```
+                 ┌─ origin/main ──▶ GitHub (public, curated)
+local main ──────┤
+                 └─ gitea/cluster ─▶ Gitea ──▶ ArgoCD (internal, operational)
+```
+
+**Why two remotes?**  
+ArgoCD polls Gitea on every sync cycle — its history is noisy with fixup commits, hotfixes, and work-in-progress pushes. That noise doesn't belong on a public portfolio repo. Keeping them separate means GitHub shows clean, intentional commits while Gitea gets the real operational history.
+
+**Daily workflow (manifest changes → cluster):**
+```bash
+# edit cluster/ or ansible/ files, then:
+make push       # git push gitea main:cluster --force → ArgoCD syncs within 3 min
+make status     # watch convergence
+```
+
+**Publishing to GitHub (when commits are ready):**
+```bash
+make publish    # prompts for confirmation, then git push origin main
+```
+
+`make publish` has a confirmation prompt — it won't fire accidentally from a script or a muscle-memory `make push`.
 
 ---
 
@@ -211,8 +245,9 @@ platform-zero/
 | 1 — Cluster backbone | k3s, ArgoCD, Gitea, GitOps loop | done |
 | 1.5 — CI/CD pipeline | act runner, Gitea OCI registry, Image Updater | done |
 | 1.6 — Secret management | Vault + ESO, all secrets through Vault | done |
-| 1.7 — Networking | Traefik, cert-manager, Linkerd service mesh | planned |
-| 2 — Observability | Prometheus, Thanos, Grafana, Loki, Tempo | in progress |
+| 1.7 — IaC lifecycle | Terraform: Vault config, MinIO buckets, Cloudflare tunnel | planned |
+| 1.8 — Networking | Traefik, cert-manager, Linkerd service mesh | planned |
+| 2 — Observability | Prometheus, Thanos, Grafana, Loki, Tempo | done |
 | 3 — Policy | Kyverno admission controller | planned |
 | 4 — Warden | Container provisioning engine (Go + gRPC + Linux primitives) | planned |
 | 5 — SLI/SLO | Error budget tracking, burn rate alerts | planned |
@@ -221,6 +256,9 @@ platform-zero/
 ---
 
 ## Design decisions
+
+**Why two separate Git remotes instead of one repo for everything?**  
+ArgoCD's sync history is operational — every `make push` force-pushes the `cluster` branch to Gitea. That history is useful for debugging convergence but it's noise on a public profile. GitHub `origin/main` gets only intentional, clean commits via `make publish`. The two remotes share the same working tree; they just have different audiences and different commit hygiene requirements.
 
 **Why self-hosted Gitea instead of pointing ArgoCD at GitHub?**  
 The cluster needs a Git remote it can reach internally. GitHub works for source code but the ArgoCD app-of-apps pattern requires the cluster to pull manifests on every sync — adding a round-trip to GitHub for every reconciliation. Gitea runs inside the cluster, zero latency, zero dependency on external network for operations.

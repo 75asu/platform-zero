@@ -11,3 +11,4 @@ kubeconfig.yaml
 .DS_Store
 *.swp
 *.swo
+PLAN.md

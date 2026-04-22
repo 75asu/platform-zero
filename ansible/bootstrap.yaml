@@ -447,6 +447,35 @@
           policies=external-secrets ttl=1h"
       changed_when: true
 
+    # ── External Secrets Operator ─────────────────────────────────────────────
+    # ESO must be running before ArgoCD activates — the infra App of Apps deploys
+    # a ClusterSecretStore CRD resource, and ArgoCD's dry-run validation requires
+    # the ESO CRDs to exist. Installing ESO here (same as Vault) breaks the chicken-
+    # and-egg. ArgoCD then just manages drift via the external-secrets Application.
+
+    - name: Add External Secrets Helm repo
+      ansible.builtin.command:
+        cmd: helm repo add external-secrets https://charts.external-secrets.io --force-update
+      changed_when: false
+
+    - name: Update External Secrets Helm repo
+      ansible.builtin.command:
+        cmd: helm repo update external-secrets
+      changed_when: false
+
+    - name: Install External Secrets Operator via Helm
+      ansible.builtin.command:
+        cmd: >
+          helm upgrade --install external-secrets external-secrets/external-secrets
+          --namespace external-secrets
+          --create-namespace
+          --set installCRDs=true
+          --set resources.requests.cpu=50m
+          --set resources.requests.memory=64Mi
+          --set resources.limits.cpu=200m
+          --set resources.limits.memory=128Mi
+          --wait --timeout 120s
+
     - name: Seed Gitea credentials into Vault
       ansible.builtin.shell:
         cmd: >-

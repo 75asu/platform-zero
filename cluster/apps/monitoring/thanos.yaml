@@ -23,6 +23,10 @@ spec:
           repository: thanos/thanos
           tag: v0.39.2
 
+        global:
+          security:
+            allowInsecureImages: true
+
         existingObjstoreSecret: thanos-objstore-secret
 
         query:

@@ -4,6 +4,26 @@
 #   make down     — full teardown, machine is clean
 #   make restart  — down then up
 #   make status   — cluster health + ArgoCD sync status
+#
+# ── Git remotes ───────────────────────────────────────────────────────────────
+#
+#   Two remotes, two purposes — never mix them:
+#
+#   origin  (GitHub)  — public portfolio history. Curated commits only.
+#                       Push manually with: make publish
+#                       Never force-pushed. Never automated.
+#
+#   gitea   (Gitea)   — ArgoCD's Git backend. main → cluster branch (force).
+#                       Push after every manifest change with: make push
+#                       History here is operational, not portfolio.
+#
+#   make push         — git push gitea main:cluster --force
+#                       Use this whenever you change cluster/ or ansible/.
+#                       ArgoCD detects the diff and reconciles within 3 min.
+#
+#   make publish      — git push origin main
+#                       Use this only when commits are clean and ready to be public.
+#                       Requires explicit confirmation prompt before pushing.
 
 SHELL := /bin/bash
 .ONESHELL:
@@ -21,7 +41,7 @@ KUBECTL     := kubectl --kubeconfig=$(KUBECONFIG)
 
 # ── Targets ───────────────────────────────────────────────────────────────────
 
-.PHONY: up down restart status
+.PHONY: up down restart status push publish
 
 ## Cluster + Gitea + ArgoCD + GitOps handoff — one command
 up: _check-env _check-deps _generate-inventory
@@ -49,6 +69,25 @@ down: _check-env _generate-inventory
 
 ## Teardown then bring up fresh
 restart: down up
+
+## Push manifests to Gitea → ArgoCD syncs (daily driver for cluster changes)
+push: _check-env _check-kubeconfig
+	@echo ">>> Pushing to Gitea (main → cluster)..."
+	@git push gitea main:cluster --force
+	@echo ""
+	@echo "  ArgoCD will reconcile within 3 min."
+	@echo "  Run 'make status' to watch convergence."
+
+## Push to GitHub — curated public history only (requires confirmation)
+publish:
+	@echo ">>> You are about to push to GitHub (origin/main)."
+	@echo "    This is the public portfolio repo. Commits will be visible."
+	@echo ""
+	@read -p "    Are the commits clean and ready to publish? [y/N] " confirm && \
+	  [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ] || \
+	  (echo "Aborted." && exit 1)
+	@git push origin main
+	@echo "Published to GitHub."
 
 ## Cluster and ArgoCD health
 status: _check-env

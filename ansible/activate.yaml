@@ -63,7 +63,7 @@
 
     - name: Push manifests to Gitea
       ansible.builtin.command:
-        cmd: git -c credential.helper='' push gitea main --force
+        cmd: git -c credential.helper='' push gitea main:cluster --force
       args:
         chdir: "{{ playbook_dir }}/.."
       environment:
@@ -75,9 +75,36 @@
         src: "{{ playbook_dir }}/files/root-app.yaml"
         state: present
 
+    # ── Post-GitOps: wait for MinIO, then create the thanos bucket ───────────────
+    # ArgoCD ignores helm.sh/hook annotations, so the chart's bucket-creation
+    # Job never runs. We create the bucket idempotently here instead.
+    - name: Wait for MinIO pod to be ready
+      ansible.builtin.command:
+        cmd: >
+          kubectl --kubeconfig={{ kubeconfig }}
+          wait pod -n monitoring -l app=minio
+          --for=condition=Ready --timeout=600s
+      retries: 10
+      delay: 30
+      register: minio_wait
+      until: minio_wait.rc == 0
+
+    - name: Create MinIO thanos bucket (idempotent)
+      ansible.builtin.shell:
+        cmd: |
+          POD=$(kubectl --kubeconfig={{ kubeconfig }} get pod -n monitoring \
+                -l app=minio -o jsonpath='{.items[0].metadata.name}')
+          kubectl --kubeconfig={{ kubeconfig }} exec -n monitoring "$POD" -- \
+            sh -c 'mc alias set local http://localhost:9000 \
+                   "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && \
+                   (mc ls local/thanos >/dev/null 2>&1 || mc mb local/thanos)'
+      register: bucket_result
+      changed_when: "'Bucket created' in bucket_result.stdout"
+
     - name: GitOps loop is active
       ansible.builtin.debug:
         msg:
           - "GitOps loop is active."
-          - "ArgoCD will sync cluster/apps/ within 3 minutes."
+          - "ArgoCD has synced cluster/apps/."
+          - "MinIO thanos bucket ensured."
           - "From now on: git push → cluster converges."

@@ -35,11 +35,11 @@ spec:
               url: http://tempo.monitoring.svc.cluster.local:3100
               access: proxy
               isDefault: false
-            - name: Thanos
+            - name: Prometheus
               type: prometheus
-              url: http://thanos-query.monitoring.svc.cluster.local:9090
+              url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
               access: proxy
-              isDefault: false
+              isDefault: true
           sidecar:
             dashboards:
               enabled: true
@@ -52,10 +52,9 @@ spec:
               memory: 256Mi
 
         prometheus:
-          thanosService:
-            enabled: true
           prometheusSpec:
-            retention: 4h
+            thanos: {}
+            retention: 24h
             storageSpec:
               volumeClaimTemplate:
                 spec:
@@ -63,11 +62,6 @@ spec:
                   resources:
                     requests:
                       storage: 20Gi
-            thanos:
-              objectStorageConfig:
-                secretKeyRef:
-                  name: thanos-objstore-secret
-                  key: objstore.yml
             resources:
               requests:
                 cpu: 200m

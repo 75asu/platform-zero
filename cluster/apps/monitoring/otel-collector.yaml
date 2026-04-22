@@ -17,6 +17,9 @@ spec:
     targetRevision: "*"
     helm:
       values: |
+        image:
+          repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
+
         mode: deployment
 
         config:
