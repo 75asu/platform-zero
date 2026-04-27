@@ -29,8 +29,8 @@ SHELL := /bin/bash
 .ONESHELL:
 
 # ── Load .env ────────────────────────────────────────────────────────────────
-ifneq (,$(wildcard .env))
-  include .env
+ifneq (,$(wildcard ../.env))
+  include ../.env
   export
 endif
 
@@ -47,7 +47,7 @@ KUBECTL     := kubectl --kubeconfig=$(KUBECONFIG)
 up: _check-env _check-deps _generate-inventory
 	@echo ">>> Bringing up platform-zero..."
 	cd $(ANSIBLE_DIR) && ansible-playbook setup.yaml
-	set -a && source $(CURDIR)/.env && set +a
+	set -a && source $(CURDIR)/../.env && set +a
 	cd $(ANSIBLE_DIR) && ansible-playbook activate.yaml
 	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
