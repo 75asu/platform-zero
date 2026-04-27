@@ -1,0 +1,20 @@
+services:
+  ministack:
+    image: ministackorg/ministack:latest
+    container_name: awslab-ministack
+    ports:
+      - "4566:4566"
+    environment:
+      - MINISTACK_REGION=us-east-1
+      - MINISTACK_ACCOUNT_ID=000000000000
+      - LOG_LEVEL=INFO
+      - PERSIST_STATE=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_ministack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s

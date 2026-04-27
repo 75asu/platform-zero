@@ -1,0 +1,20 @@
+---
+- name: Tear down Ministack on homelab
+  hosts: awslab
+  gather_facts: false
+
+  tasks:
+    - name: Stop and remove Ministack container
+      shell: docker stop awslab-ministack && docker rm awslab-ministack
+      args:
+        chdir: ~/awslab
+      ignore_errors: true
+
+    - name: Remove awslab working directory
+      file:
+        path: ~/awslab
+        state: absent
+
+    - name: Done
+      debug:
+        msg: "Ministack stopped. Homelab is clean."

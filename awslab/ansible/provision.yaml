@@ -1,0 +1,44 @@
+---
+- name: Start Ministack on homelab
+  hosts: awslab
+  gather_facts: false
+
+  tasks:
+    - name: Verify Docker is installed
+      command: docker --version
+      changed_when: false
+      register: docker_check
+      failed_when: docker_check.rc != 0
+
+    - name: Create awslab working directory
+      file:
+        path: ~/awslab
+        state: directory
+        mode: "0755"
+
+    - name: Copy docker-compose.yml
+      copy:
+        src: ../docker-compose.yml
+        dest: ~/awslab/docker-compose.yml
+
+    - name: Start Ministack
+      shell: docker compose up -d
+      args:
+        chdir: ~/awslab
+
+    - name: Wait for Ministack to be healthy
+      uri:
+        url: http://localhost:4566/_ministack/health
+        status_code: 200
+      register: health
+      retries: 20
+      delay: 3
+      until: health.status == 200
+
+    - name: Ready
+      debug:
+        msg:
+          - "Ministack is up."
+          - "Endpoint: http://{{ ansible_host }}:4566"
+          - "Run on your local machine: source awslab/env.sh"
+          - "Then test: aws s3 ls"
