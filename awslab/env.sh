@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Source this file to point your local AWS CLI and Terraform at Ministack.
+# Source this file to point your local AWS CLI and Terraform at Ministack + MinIO.
 #   source awslab/env.sh
 #
 # Requires TARGET_HOST to be set in .env — the Makefile exports it automatically.
@@ -21,8 +21,10 @@ export AWS_ACCESS_KEY_ID=test
 export AWS_SECRET_ACCESS_KEY=test
 export AWS_PAGER=""
 
+export MINIO_ENDPOINT_URL=http://${TARGET_HOST}:9000
+
 echo "→ awslab env set"
-echo "  Endpoint : http://${TARGET_HOST}:4566"
-echo "  Region   : us-east-1"
+echo "  Ministack : http://${TARGET_HOST}:4566"
+echo "  MinIO     : http://${TARGET_HOST}:9000  (console: :9001)"
 echo ""
 echo "  Quick test: aws s3 ls"

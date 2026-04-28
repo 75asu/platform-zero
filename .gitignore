@@ -5,6 +5,11 @@
 k8slab/ansible/inventory/hosts.yaml
 awslab/ansible/inventory/hosts.yaml
 
+# Terraform / Terragrunt generated and local state
+**/.terraform/
+**/.terragrunt-cache/
+**/.terraform.lock.hcl
+
 # kubeconfig fetched from cluster
 k8slab/kubeconfig.yaml
 

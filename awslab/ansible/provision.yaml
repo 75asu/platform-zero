@@ -21,7 +21,7 @@
         src: ../docker-compose.yml
         dest: ~/awslab/docker-compose.yml
 
-    - name: Start Ministack
+    - name: Start containers
       shell: docker compose up -d
       args:
         chdir: ~/awslab
@@ -35,10 +35,27 @@
       delay: 3
       until: health.status == 200
 
+    - name: Wait for MinIO state bucket to be created
+      block:
+        - shell: docker wait awslab-minio-init
+          args:
+            chdir: ~/awslab
+          register: minio_init_wait
+          changed_when: false
+          failed_when: (minio_init_wait.stdout | trim) != '0'
+      rescue:
+        - name: MinIO logs (diagnosis)
+          shell: docker logs awslab-minio
+          args:
+            chdir: ~/awslab
+          ignore_errors: true
+        - fail:
+            msg: "minio-init exited {{ minio_init_wait.stdout | trim }}. Check MinIO logs above."
+
     - name: Ready
       debug:
         msg:
-          - "Ministack is up."
-          - "Endpoint: http://{{ ansible_host }}:4566"
+          - "Ministack is up.  → http://{{ ansible_host }}:4566"
+          - "MinIO is up.      → http://{{ ansible_host }}:9000"
+          - "MinIO console.    → http://{{ ansible_host }}:9001"
           - "Run on your local machine: source awslab/env.sh"
-          - "Then test: aws s3 ls"
