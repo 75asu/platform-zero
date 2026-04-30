@@ -42,44 +42,86 @@ resource "aws_s3_bucket_public_access_block" "this" {
 
 }
 
-# Layer 4: Bucket policy - deny HTTP, deny unencrypted uploads
+# Layer 4: Bucket policy
+# Always enforces: deny HTTP, deny unencrypted uploads.
+# When allowed_role_arns is set: also restricts read/write to those
+# specific IAM roles — Principal:* is removed from data-access statements.
+# This is the IAM-as-wrapper pattern: IAM module outputs role ARNs,
+# this module consumes them to close the resource-policy side.
 resource "aws_s3_bucket_policy" "this" {
   bucket = aws_s3_bucket.this.id
 
-  # public_access_block must exist before policy can be applied
   depends_on = [aws_s3_bucket_public_access_block.this]
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "DenyHTTP"
-        Effect    = "Deny"
+    # concat() with for-expression pattern: each ternary toggles between [1] and []
+    # — same type in both branches — so Terraform's type checker is satisfied.
+    # The for expression then maps to the actual statement object.
+    Statement = concat(
+      [
+        {
+          Sid       = "DenyHTTP"
+          Effect    = "Deny"
+          Principal = "*"
+          Action    = "s3:*"
+          Resource = [
+            aws_s3_bucket.this.arn,
+            "${aws_s3_bucket.this.arn}/*"
+          ]
+          Condition = {
+            Bool = {
+              "aws:SecureTransport" = "false"
+            }
+          }
+        },
+        {
+          Sid       = "DenyUnencryptedUploads"
+          Effect    = "Deny"
+          Principal = "*"
+          Action    = "s3:PutObject"
+          Resource  = "${aws_s3_bucket.this.arn}/*"
+          Condition = {
+            "Null" = {
+              "s3:x-amz-server-side-encryption" = "true"
+            }
+          }
+        }
+      ],
+      [for _ in (length(var.allowed_role_arns) > 0 ? [1] : []) : {
+        Sid    = "AllowScopedRoles"
+        Effect = "Allow"
+        Principal = {
+          AWS = var.allowed_role_arns
+        }
+        Action = [
+          "s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+          "s3:ListBucket", "s3:GetBucketLocation"
+        ]
+        Resource = [
+          aws_s3_bucket.this.arn,
+          "${aws_s3_bucket.this.arn}/*"
+        ]
+      }],
+      [for _ in (length(var.allowed_role_arns) > 0 ? [1] : []) : {
+        Sid    = "DenyAllOtherPrincipals"
+        Effect = "Deny"
         Principal = "*"
-        Action    = "s3:*"
+        Action = [
+          "s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
         Resource = [
           aws_s3_bucket.this.arn,
           "${aws_s3_bucket.this.arn}/*"
         ]
         Condition = {
-          Bool = {
-            "aws:SecureTransport" = "false"
+          ArnNotLike = {
+            "aws:PrincipalArn" = var.allowed_role_arns
           }
         }
-      },
-      {
-        Sid       = "DenyUnencryptedUploads"
-        Effect    = "Deny"
-        Principal = "*"
-        Action    = "s3:PutObject"
-        Resource  = "${aws_s3_bucket.this.arn}/*"
-        Condition = {
-          "Null" = {
-            "s3:x-amz-server-side-encryption" = "true"
-          }
-        }
-      }
-    ]
+      }],
+    )
   })
 }
 

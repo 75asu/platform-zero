@@ -16,7 +16,7 @@ export AWS_SECRET_ACCESS_KEY = test
 export AWS_PAGER            =
 export MINIO_ENDPOINT_URL   = http://$(TARGET_HOST):9000
 
-.PHONY: up down deploy teardown tf-dev tf-staging tf-all
+.PHONY: up down deploy teardown tf-dev tf-staging tf-all clean
 
 ## Full stack up: start containers + apply all environments
 deploy: up tf-all
@@ -67,6 +67,12 @@ tf-staging: _check-env
 ## Apply all environments
 tf-all: _check-env
 	cd terraform/live && TG_NON_INTERACTIVE=true terragrunt run --all -- apply -auto-approve
+
+## Delete all Terragrunt module caches — run after editing module source files
+clean:
+	find terraform -name ".terragrunt-cache" -type d -exec rm -rf {} + 2>/dev/null || true
+	find terraform -name ".terraform.lock.hcl" -not -path "*/modules/*" -delete 2>/dev/null || true
+	echo "Cache cleared."
 
 ## ── Internal targets ─────────────────────────────────────────────────────────
 

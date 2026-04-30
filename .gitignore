@@ -18,3 +18,7 @@ k8slab/kubeconfig.yaml
 *.swp
 *.swo
 PLAN.md
+
+# local planning notes — never push
+awslab/docs/
+k8slab/docs/

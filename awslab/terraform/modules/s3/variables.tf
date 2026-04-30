@@ -72,3 +72,9 @@ variable "logging_target_prefix" {
   type        = string
   default     = "s3-access-logs/"
 }
+
+variable "allowed_role_arns" {
+  description = "IAM role ARNs allowed to read/write this bucket. When non-empty, bucket policy restricts access to these roles only (plus the DenyHTTP/DenyUnencrypted statements). Empty list = bucket policy keeps Principal:* with condition-only restrictions."
+  type        = list(string)
+  default     = []
+}
