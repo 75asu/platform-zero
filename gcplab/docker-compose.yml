@@ -1,0 +1,57 @@
+services:
+  minisky:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gcplab-minisky:latest
+    container_name: gcplab-minisky
+    # host network: MiniSky and the containers it spawns internally all share
+    # the host network namespace — no cross-network translation needed.
+    network_mode: host
+    environment:
+      MINISKY_PORT: 8082
+      MINISKY_UI_PORT: 8083
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - minisky-data:/root/.minisky
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8082/storage/v1/b?project=test || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+  minio:
+    image: minio/minio:latest
+    container_name: gcplab-minio
+    network_mode: host
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    # --address binds API on 9002, --console-address on 9003
+    # avoids collision with awslab MinIO on 9000/9001
+    command: server /data --address ":9002" --console-address ":9003"
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: gcplab-minio-init
+    network_mode: host
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      count=0;
+      until timeout 5 mc alias set local http://localhost:9002 minioadmin minioadmin 2>/dev/null; do
+        count=\$((count+1));
+        if [ \$count -ge 20 ]; then echo 'ERROR: MinIO did not start within 40s'; exit 1; fi;
+        echo \"Waiting for MinIO... (\$count/20)\" && sleep 2;
+      done &&
+      mc mb local/platform-zero-gcp-tfstate --ignore-existing &&
+      echo 'GCP state bucket ready.'
+      "
+    restart: "no"
+
+volumes:
+  minisky-data:

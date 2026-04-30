@@ -4,6 +4,7 @@
 # generated from template by Makefile — contains real IPs/users
 k8slab/ansible/inventory/hosts.yaml
 awslab/ansible/inventory/hosts.yaml
+gcplab/ansible/inventory/hosts.yaml
 
 # Terraform / Terragrunt generated and local state
 **/.terraform/
@@ -21,4 +22,5 @@ PLAN.md
 
 # local planning notes — never push
 awslab/docs/
+gcplab/docs/
 k8slab/docs/

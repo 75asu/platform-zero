@@ -1,0 +1,25 @@
+---
+- name: Tear down gcplab on homelab
+  hosts: gcplab
+  gather_facts: false
+
+  tasks:
+    - name: Stop MiniSky
+      command: minisky stop
+      ignore_errors: true
+      changed_when: false
+
+    - name: Stop and remove MinIO containers
+      shell: docker compose down
+      args:
+        chdir: ~/gcplab
+      ignore_errors: true
+
+    - name: Remove gcplab working directory
+      file:
+        path: ~/gcplab
+        state: absent
+
+    - name: Done
+      debug:
+        msg: "MiniSky stopped. All containers removed. Homelab is clean."

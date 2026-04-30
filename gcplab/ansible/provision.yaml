@@ -1,0 +1,82 @@
+---
+- name: Start MiniSky + MinIO on homelab
+  hosts: gcplab
+  gather_facts: false
+
+  vars:
+    gcplab_dir: ~/gcplab
+
+  tasks:
+    - name: Verify Docker is installed
+      command: docker --version
+      changed_when: false
+      register: docker_check
+      failed_when: docker_check.rc != 0
+
+    - name: Create gcplab working directory
+      file:
+        path: "{{ gcplab_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy docker-compose.yml
+      copy:
+        src: ../docker-compose.yml
+        dest: "{{ gcplab_dir }}/docker-compose.yml"
+
+    - name: Copy Dockerfile
+      copy:
+        src: ../Dockerfile
+        dest: "{{ gcplab_dir }}/Dockerfile"
+
+    # ── Build MiniSky image on the homelab ─────────────────────────────────────
+
+    - name: Build MiniSky Docker image
+      shell: docker compose build minisky
+      args:
+        chdir: "{{ gcplab_dir }}"
+      register: build_result
+      changed_when: true
+
+    - name: Show build output
+      debug:
+        var: build_result.stdout_lines
+
+    # ── Start containers ────────────────────────────────────────────────────────
+
+    - name: Start MiniSky and MinIO
+      shell: docker compose up -d minisky minio
+      args:
+        chdir: "{{ gcplab_dir }}"
+
+    - name: Wait for MiniSky API port to be open
+      wait_for:
+        host: localhost
+        port: 8082
+        timeout: 60
+        state: started
+
+    - name: Run minio-init (create state bucket)
+      block:
+        - shell: docker compose up minio-init
+          args:
+            chdir: "{{ gcplab_dir }}"
+          register: minio_init
+          changed_when: false
+      rescue:
+        - name: MinIO logs (diagnosis)
+          shell: docker logs gcplab-minio
+          args:
+            chdir: "{{ gcplab_dir }}"
+          ignore_errors: true
+        - fail:
+            msg: "minio-init failed. Check MinIO logs above."
+
+    - name: Ready
+      debug:
+        msg:
+          - "MiniSky is up.    → http://{{ ansible_host }}:8082"
+          - "MiniSky UI.       → http://{{ ansible_host }}:8083"
+          - "MinIO is up.      → http://{{ ansible_host }}:9002"
+          - "MinIO console.    → http://{{ ansible_host }}:9003"
+          - "Run on your local machine: source gcplab/env.sh"
