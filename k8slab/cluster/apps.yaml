@@ -15,7 +15,7 @@ spec:
   source:
     repoURL: "http://gitea-http.gitea.svc.cluster.local:3000/admin/platform-zero.git"
     targetRevision: cluster
-    path: cluster/apps
+    path: k8slab/cluster/apps
     directory:
       recurse: true
 

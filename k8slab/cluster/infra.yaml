@@ -16,7 +16,7 @@ spec:
   source:
     repoURL: "http://gitea-http.gitea.svc.cluster.local:3000/admin/platform-zero.git"
     targetRevision: cluster
-    path: cluster/infra
+    path: k8slab/cluster/infra
     directory:
       recurse: true
 

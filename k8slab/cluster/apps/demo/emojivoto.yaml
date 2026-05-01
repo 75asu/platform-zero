@@ -1,0 +1,29 @@
+---
+# emojivoto — Buoyant's 3-service demo app (used in Linkerd tutorials).
+# Services: web (HTTP) → emoji-svc (gRPC) + voting-svc (gRPC) + vote-bot (constant traffic).
+# vote-bot generates continuous load — traces and metrics flow without manual triggers.
+# Good for: distributed tracing across gRPC hops, Falco rule triggers, RED metrics.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: emojivoto
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: "http://gitea-http.gitea.svc.cluster.local:3000/admin/platform-zero.git"
+    targetRevision: cluster
+    path: k8slab/cluster/base/demo/emojivoto
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: emojivoto
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -36,7 +36,7 @@
 
     - name: Save Gitea credentials to .env
       ansible.builtin.lineinfile:
-        path: "{{ playbook_dir }}/../.env"
+        path: "{{ playbook_dir }}/../../.env"
         regexp: "^{{ item.key }}="
         line: "{{ item.key }}={{ item.value }}"
         state: present
@@ -205,7 +205,7 @@
 
     - name: Save ArgoCD credentials to .env
       ansible.builtin.lineinfile:
-        path: "{{ playbook_dir }}/../.env"
+        path: "{{ playbook_dir }}/../../.env"
         regexp: "^{{ item.key }}="
         line: "{{ item.key }}={{ item.value }}"
         state: present
@@ -336,7 +336,7 @@
 
     - name: Save Vault credentials to .env
       ansible.builtin.lineinfile:
-        path: "{{ playbook_dir }}/../.env"
+        path: "{{ playbook_dir }}/../../.env"
         regexp: "^{{ item.key }}="
         line: "{{ item.key }}={{ item.value }}"
         state: present
@@ -348,8 +348,8 @@
     - name: Read Vault credentials from .env
       ansible.builtin.shell:
         cmd: |
-          grep '^VAULT_UNSEAL_KEY=' {{ playbook_dir }}/../.env | cut -d= -f2-
-          grep '^VAULT_ROOT_TOKEN=' {{ playbook_dir }}/../.env | cut -d= -f2-
+          grep '^VAULT_UNSEAL_KEY=' {{ playbook_dir }}/../../.env | cut -d= -f2-
+          grep '^VAULT_ROOT_TOKEN=' {{ playbook_dir }}/../../.env | cut -d= -f2-
       register: vault_creds_from_env
       changed_when: false
       when: vault_initialized
@@ -509,7 +509,7 @@
 
     - name: Save Grafana admin password to .env
       ansible.builtin.lineinfile:
-        path: "{{ playbook_dir }}/../.env"
+        path: "{{ playbook_dir }}/../../.env"
         regexp: "^GRAFANA_ADMIN_PASSWORD="
         line: "GRAFANA_ADMIN_PASSWORD={{ grafana_admin_password }}"
         state: present
@@ -540,7 +540,7 @@
 
     - name: Save MinIO credentials to .env
       ansible.builtin.lineinfile:
-        path: "{{ playbook_dir }}/../.env"
+        path: "{{ playbook_dir }}/../../.env"
         regexp: "^{{ item.key }}="
         line: "{{ item.key }}={{ item.value }}"
         state: present
