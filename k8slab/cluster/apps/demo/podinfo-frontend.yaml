@@ -1,0 +1,59 @@
+---
+# podinfo-frontend — calls podinfo-backend on every request.
+# Creates real distributed traces: frontend span → backend span → visible in Tempo.
+# Also exercises Falco: exec into this pod to trigger shell/credential-read rules.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: podinfo-frontend
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    targetRevision: "*"
+    helm:
+      values: |
+        replicaCount: 1
+
+        ui:
+          message: "podinfo-frontend"
+          color: "#e06c75"
+
+        backend: http://podinfo-backend.demo:9898/echo
+
+        service:
+          type: ClusterIP
+          port: 9898
+          grpcPort: 9999
+
+        serviceMonitor:
+          enabled: true
+
+        env:
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.monitoring.svc.cluster.local:4317
+          - name: OTEL_SERVICE_NAME
+            value: podinfo-frontend
+
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

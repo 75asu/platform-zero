@@ -1,0 +1,92 @@
+---
+# web — HTTP frontend, calls emoji-svc + voting-svc over gRPC on every request.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: emojivoto
+  labels:
+    app: web-svc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-svc
+  template:
+    metadata:
+      labels:
+        app: web-svc
+    spec:
+      containers:
+        - name: web-svc
+          image: docker.l5d.io/buoyantio/emojivoto-web:v11
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8801
+              name: prom
+          env:
+            - name: WEB_PORT
+              value: "8080"
+            - name: EMOJISVC_HOST
+              value: "emoji-svc:8080"
+            - name: VOTINGSVC_HOST
+              value: "voting-svc:8080"
+            - name: INDEX_BUNDLE
+              value: dist/index_bundle.js
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: emojivoto
+spec:
+  selector:
+    app: web-svc
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: prom
+      port: 8801
+      targetPort: 8801
+---
+# vote-bot — continuously votes random emojis, generates constant traffic automatically.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vote-bot
+  namespace: emojivoto
+  labels:
+    app: vote-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vote-bot
+  template:
+    metadata:
+      labels:
+        app: vote-bot
+    spec:
+      containers:
+        - name: vote-bot
+          image: docker.l5d.io/buoyantio/emojivoto-web:v11
+          command: [emojivoto-vote-bot]
+          env:
+            - name: WEB_HOST
+              value: "web-svc:8080"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi

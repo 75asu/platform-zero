@@ -1,0 +1,57 @@
+---
+# podinfo-backend — lightweight Go microservice (Stefan Prodan / Flux creator).
+# Exposes REST + gRPC, /metrics, /healthz, /readyz.
+# Acts as the upstream service that frontend calls — creates real HTTP spans in Tempo.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: podinfo-backend
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    targetRevision: "*"
+    helm:
+      values: |
+        replicaCount: 1
+
+        ui:
+          message: "podinfo-backend"
+          color: "#3d85c8"
+
+        service:
+          type: ClusterIP
+          port: 9898
+          grpcPort: 9999
+
+        serviceMonitor:
+          enabled: true
+
+        env:
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.monitoring.svc.cluster.local:4317
+          - name: OTEL_SERVICE_NAME
+            value: podinfo-backend
+
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
