@@ -48,6 +48,12 @@ spec:
               cpu: 500m
               memory: 512Mi
 
+        # Disable Memcached caches — not needed with SingleBinary + filesystem storage
+        chunksCache:
+          enabled: false
+        resultsCache:
+          enabled: false
+
         # Disable distributed-mode components
         backend:
           replicas: 0
