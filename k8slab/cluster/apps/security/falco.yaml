@@ -32,10 +32,6 @@ spec:
         falco:
           json_output: true
           log_level: info
-          rules_file:
-            - /etc/falco/falco_rules.yaml
-            - /etc/falco/falco_rules.local.yaml
-            - /etc/falco/rules.d
 
         customRules:
           rules-lab.yaml: |-
@@ -101,10 +97,10 @@ spec:
         resources:
           requests:
             cpu: 100m
-            memory: 256Mi
+            memory: 128Mi
           limits:
             cpu: 1000m
-            memory: 512Mi
+            memory: 384Mi
 
   destination:
     server: https://kubernetes.default.svc
