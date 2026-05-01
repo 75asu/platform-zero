@@ -1,0 +1,51 @@
+---
+# Privileged DaemonSet that sets inotify limits on every k3d node at startup.
+# Required by Falco (modern_ebpf) and Promtail — both exhaust the kernel
+# defaults (max_user_instances=128, max_user_watches=8192) under k3d.
+#
+# The init container sets the sysctl inside the node's kernel namespace
+# (privileged = writes to the host, not just the container).
+# The setting persists for the node lifetime and re-applies on pod restart.
+#
+# Deployed in wave 0 (infra) so limits are in place before wave 1
+# workloads (Falco, Promtail) are scheduled.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-inotify-config
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: node-inotify-config
+spec:
+  selector:
+    matchLabels:
+      app: node-inotify-config
+  template:
+    metadata:
+      labels:
+        app: node-inotify-config
+    spec:
+      tolerations:
+        - operator: Exists
+      initContainers:
+        - name: set-inotify-limits
+          image: busybox:1.36
+          securityContext:
+            privileged: true
+          command:
+            - sh
+            - -c
+            - |
+              sysctl -w fs.inotify.max_user_instances=512
+              sysctl -w fs.inotify.max_user_watches=524288
+      containers:
+        - name: pause
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep infinity"]
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 10m
+              memory: 8Mi

@@ -1,0 +1,26 @@
+---
+# Node-level kernel tuning — deployed in wave 0 so limits are in place
+# before wave 1 workloads (Falco, Promtail) are scheduled.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: node-config
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: "http://gitea-http.gitea.svc.cluster.local:3000/admin/platform-zero.git"
+    targetRevision: cluster
+    path: k8slab/cluster/base/node-config
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
