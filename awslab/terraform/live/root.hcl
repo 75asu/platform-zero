@@ -35,8 +35,17 @@ provider "aws" {
   s3_use_path_style           = true
 
   endpoints {
-    s3       = "${local.aws_endpoint}"
-    dynamodb = "${local.aws_endpoint}"
+    s3             = "${local.aws_endpoint}"
+    dynamodb       = "${local.aws_endpoint}"
+    sqs            = "${local.aws_endpoint}"
+    rds            = "${local.aws_endpoint}"
+    secretsmanager = "${local.aws_endpoint}"
+    iam            = "${local.aws_endpoint}"
+    sts            = "${local.aws_endpoint}"
+    ecs            = "${local.aws_endpoint}"
+    ecr            = "${local.aws_endpoint}"
+    cloudwatchlogs = "${local.aws_endpoint}"
+    elbv2          = "${local.aws_endpoint}"
   }
 }
 EOF
