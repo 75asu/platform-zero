@@ -21,6 +21,6 @@ k8slab/kubeconfig.yaml
 PLAN.md
 
 # local planning notes — never push
-awslab/docs/
+# awslab/docs/ — unignored, plan files are tracked
 gcplab/docs/
 k8slab/docs/

@@ -21,6 +21,12 @@
         src: ../docker-compose.yml
         dest: ~/awslab/docker-compose.yml
 
+    - name: Copy .env (required for TARGET_HOST substitution in docker-compose)
+      copy:
+        src: ../../.env
+        dest: ~/awslab/.env
+        mode: "0600"
+
     - name: Start containers
       shell: docker compose up -d
       args:
@@ -52,10 +58,85 @@
         - fail:
             msg: "minio-init exited {{ minio_init_wait.stdout | trim }}. Check MinIO logs above."
 
+    # ── Netbird Phase 2: enroll homelab host into the mesh ─────────────────────
+    - name: Install Netbird agent
+      shell: |
+        if command -v netbird >/dev/null 2>&1; then
+          echo "netbird already installed"
+          exit 0
+        fi
+        curl -fsSL https://pkgs.netbird.io/install.sh | sh
+      args:
+        chdir: ~/awslab
+      register: netbird_install
+      changed_when: "'already installed' not in netbird_install.stdout"
+
+    - name: Wait for Netbird management to be reachable
+      uri:
+        url: http://localhost:33073/api/peers
+        status_code: [200, 401, 403]
+      register: mgmt_ready
+      retries: 15
+      delay: 3
+      until: mgmt_ready.status in [200, 401, 403]
+
+    - name: Get Dex access token (password grant)
+      uri:
+        url: http://localhost:5556/dex/token
+        method: POST
+        body_format: form-urlencoded
+        body:
+          grant_type: password
+          username: "admin@awslab.local"
+          password: "{{ lookup('env', 'NETBIRD_ADMIN_PASSWORD') | default('AWSlabAdmin2026!') }}"
+          client_id: netbird
+          client_secret: netbird-secret-change-in-production
+          scope: "openid profile email"
+        status_code: 200
+      register: dex_token
+      no_log: true
+
+    - name: Create homelab-host setup key via Netbird API
+      uri:
+        url: http://localhost:33073/api/setup-keys
+        method: POST
+        headers:
+          Authorization: "Bearer {{ dex_token.json.id_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          name: homelab-host
+          type: reusable
+          expires_in: 86400
+          revoked: false
+        status_code: [200, 201]
+      register: setup_key
+
+    - name: Enroll homelab host into Netbird mesh
+      shell: |
+        systemctl stop netbird 2>/dev/null || true
+        rm -rf /var/lib/netbird/
+        systemctl start netbird
+        sleep 3
+        netbird up \
+          --management-url http://{{ ansible_host }}:33073 \
+          --setup-key {{ setup_key.json.key }}
+      become: true
+      register: netbird_up
+      changed_when: true
+
+    - name: Confirm Netbird peer is connected
+      shell: netbird status 2>/dev/null | grep -i 'connected\|peer'
+      register: netbird_status
+      failed_when: false
+      changed_when: false
+
     - name: Ready
       debug:
         msg:
-          - "Ministack is up.  → http://{{ ansible_host }}:4566"
-          - "MinIO is up.      → http://{{ ansible_host }}:9000"
-          - "MinIO console.    → http://{{ ansible_host }}:9001"
+          - "Ministack is up.      → http://{{ ansible_host }}:4566"
+          - "MinIO is up.          → http://{{ ansible_host }}:9000"
+          - "MinIO console.        → http://{{ ansible_host }}:9001"
+          - "Netbird dashboard.    → http://{{ ansible_host }}:8080"
+          - "Netbird status:       {{ netbird_status.stdout | default('(check: netbird status)') }}"
           - "Run on your local machine: source awslab/env.sh"

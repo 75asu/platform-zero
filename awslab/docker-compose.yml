@@ -31,7 +31,6 @@ services:
     command: server /data --console-address ":9001"
     restart: unless-stopped
 
-  # Runs once — polls until MinIO accepts connections, then creates the state bucket
   minio-init:
     image: minio/mc:latest
     container_name: awslab-minio-init
@@ -41,11 +40,177 @@ services:
       /bin/sh -c "
       count=0;
       until timeout 5 mc alias set local http://minio:9000 minioadmin minioadmin 2>/dev/null; do
-        count=\$((count+1));
-        if [ \$count -ge 20 ]; then echo 'ERROR: MinIO did not start within 40s'; exit 1; fi;
-        echo \"Waiting for MinIO... (\$count/20)\" && sleep 2;
+        count=$$((count+1));
+        if [ $$count -ge 20 ]; then echo 'ERROR: MinIO did not start within 40s'; exit 1; fi;
+        echo \"Waiting for MinIO... ($$count/20)\" && sleep 2;
       done &&
       mc mb local/platform-zero-tfstate --ignore-existing &&
       echo 'State bucket ready.'
       "
     restart: "no"
+
+  # ── Netbird signal server ─────────────────────────────────────────────────
+  netbird-signal:
+    image: netbirdio/signal:latest
+    container_name: awslab-netbird-signal
+    ports:
+      - "10000:10000"
+    restart: unless-stopped
+
+  # ── Dex — lightweight OIDC provider ────────────────────────────────────────
+  # Static passwords connector: no external identity backend needed.
+  # One admin user, one client for Netbird. Perfect for lab use.
+  dex:
+    image: dexidp/dex:latest
+    container_name: awslab-dex
+    ports:
+      - "5556:5556"
+    volumes:
+      - dex-config:/etc/dex
+    command: dex serve /etc/dex/config.yaml
+    restart: unless-stopped
+    depends_on:
+      dex-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:5556/dex/.well-known/openid-configuration"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  dex-init:
+    image: alpine:latest
+    container_name: awslab-dex-init
+    volumes:
+      - dex-config:/config
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cat > /config/config.yaml << 'DEX_EOF'
+        issuer: http://HOSTPLACEHOLDER:5556/dex
+        storage:
+          type: sqlite3
+          config:
+            file: /var/dex/dex.db
+        web:
+          http: 0.0.0.0:5556
+        oauth2:
+          skipApprovalScreen: true
+          responseTypes: ["code", "token", "id_token"]
+          passwordConnector: local
+        staticClients:
+          - id: netbird
+            name: Netbird
+            secret: netbird-secret-change-in-production
+            redirectURIs:
+              - "http://localhost:8080"
+              - "http://HOSTPLACEHOLDER:8080"
+        connectors:
+          - type: mockCallback
+            id: mock
+            name: Mock
+        enablePasswordDB: true
+        staticPasswords:
+          - email: "admin@awslab.local"
+            hash: $2b$10$$VXo70CpXM1EDtx2KBMG2MO6i3hC0sVg3oCM8BLdqcZDHrSu79q1QW
+            username: "admin"
+            userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
+        DEX_EOF
+        sed -i "s|HOSTPLACEHOLDER|${TARGET_HOST}|g" /config/config.yaml
+        echo "Dex config written."
+    restart: "no"
+
+  # ── Netbird management config init ─────────────────────────────────────────
+  # Writes management.json with Dex OIDC integration before mgmt starts.
+  netbird-mgmt-init:
+    image: alpine:latest
+    container_name: awslab-netbird-mgmt-init
+    volumes:
+      - netbird-config:/config
+    depends_on:
+      dex-init:
+        condition: service_completed_successfully
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cat > /config/management.json << 'NETBIRD_EOF'
+        {
+          "Stuns": [{"Proto": "udp", "URI": "stun:stun.l.google.com:19302"}],
+          "TURNConfig": {"TimeBasedCredentials": false},
+          "Signal": {"Proto": "http", "URI": "HOSTPLACEHOLDER:10000"},
+          "Datadir": "/var/lib/netbird",
+          "DataStoreEncryptionKey": "411+vUP+EAA+Qaj9iup45MbhgEchEnp67e0PS3C27iA=",
+          "HttpConfig": {
+            "Address": "0.0.0.0:80",
+            "AuthIssuer": "http://HOSTPLACEHOLDER:5556/dex",
+            "AuthAudience": "netbird",
+            "AuthUserIDClaim": "email",
+            "AuthKeysLocation": "http://dex:5556/dex/keys",
+            "OIDCConfigEndpoint": "",
+            "LetsEncryptDomain": ""
+          },
+          "IdpManagerConfig": {
+            "ManagerType": "none",
+            "ClientConfig": {
+              "Issuer": "http://HOSTPLACEHOLDER:5556/dex",
+              "ClientID": "netbird",
+              "Audience": "netbird"
+            },
+            "ExtraConfig": {
+              "Audience": "netbird",
+              "ClientId": "netbird",
+              "ClientSecret": "netbird-secret-change-in-production"
+            }
+          },
+          "StoreConfig": {"Engine": "sqlite"},
+          "PKCEAuthorizationFlow": {"Enabled": false}
+        }
+        NETBIRD_EOF
+        sed -i "s|HOSTPLACEHOLDER|${TARGET_HOST}|g" /config/management.json
+        echo "Netbird config written."
+    restart: "no"
+
+  # ── Netbird management server ─────────────────────────────────────────────
+  netbird-mgmt:
+    image: netbirdio/management:latest
+    container_name: awslab-netbird-mgmt
+    ports:
+      - "33073:80"
+    volumes:
+      - netbird-config:/etc/netbird:ro
+      - netbird-data:/var/lib/netbird
+    depends_on:
+      netbird-mgmt-init:
+        condition: service_completed_successfully
+      netbird-signal:
+        condition: service_started
+      dex:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Netbird dashboard ─────────────────────────────────────────────────────
+  netbird-dashboard:
+    image: netbirdio/dashboard:latest
+    container_name: awslab-netbird-dashboard
+    ports:
+      - "8080:80"
+    environment:
+      - NETBIRD_MGMT_API_ENDPOINT=http://${TARGET_HOST}:33073
+      - NETBIRD_MGMT_GRPC_API_ENDPOINT=http://${TARGET_HOST}:33073
+      - AUTH_AUTHORITY=http://${TARGET_HOST}:5556/dex
+      - AUTH_CLIENT_ID=netbird
+      - AUTH_CLIENT_SECRET=netbird-secret-change-in-production
+      - AUTH_REDIRECT_URI=http://${TARGET_HOST}:8080
+      - AUTH_SILENT_REDIRECT_URI=http://${TARGET_HOST}:8080/silent-redirect.html
+    depends_on:
+      - netbird-mgmt
+      - dex
+    restart: unless-stopped
+
+volumes:
+  dex-config:
+  netbird-config:
+  netbird-data:

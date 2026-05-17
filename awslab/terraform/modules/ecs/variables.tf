@@ -149,6 +149,16 @@ variable "health_check_path" {
 
 # ── IAM wiring ─────────────────────────────────────────────────────────────────
 
+variable "permission_boundary_arn" {
+  description = <<-EOT
+    ARN of the IAM permission boundary to apply to all roles in this module.
+    Wire from dependency.iam.outputs.permission_boundary_arn in real AWS.
+    Ministack: set to empty string — PutRolePermissionsBoundary not supported.
+  EOT
+  type    = string
+  default = ""
+}
+
 variable "sqs_queue_arns" {
   description = <<-EOT
     SQS queue ARNs the task role can send/receive on.

@@ -116,9 +116,8 @@ make publish    # prompts for confirmation, then git push origin main
 | 1.8 — Networking | Traefik, cert-manager, Linkerd service mesh | planned |
 | 2 — Observability | Prometheus, Thanos, Grafana, Loki, Tempo | done |
 | 3 — Policy | Kyverno admission controller | planned |
-| 4 — Warden | Container provisioning engine (Go + gRPC + Linux primitives) | planned |
-| 5 — SLI/SLO | Error budget tracking, burn rate alerts | planned |
-| 6 — Chaos | Chaos Mesh experiments against Warden | planned |
+| 4 — SLI/SLO | Error budget tracking, burn rate alerts | planned |
+| 5 — Chaos | Chaos Mesh experiments | planned |
 
 ## Build phases — awslab
 

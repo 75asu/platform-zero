@@ -11,12 +11,17 @@ dependency "iam" {
 
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
   mock_outputs = {
-    ci_deploy_role_arn = "arn:aws:iam::000000000000:role/mock-ci-deploy"
+    ci_deploy_role_arn       = "arn:aws:iam::000000000000:role/mock-ci-deploy"
+    permission_boundary_arn  = "arn:aws:iam::000000000000:policy/mock-boundary"
   }
 }
 
 inputs = {
   environment = "dev"
+
+  # Ministack: PutRolePermissionsBoundary not supported — skip boundary.
+  # Real AWS: permission_boundary_arn = dependency.iam.outputs.permission_boundary_arn
+  permission_boundary_arn = ""
 
   # Ministack: EC2 launch type + awsvpc network mode with fake subnets.
   # Bridge mode crashes aws provider v4/v5 (nil NetworkConfiguration).

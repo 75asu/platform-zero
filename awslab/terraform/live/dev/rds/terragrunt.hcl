@@ -6,6 +6,16 @@ terraform {
   source = "../../../modules/rds"
 }
 
+dependency "vpc" {
+  config_path = "../vpc"
+
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs = {
+    vpc_id          = "vpc-00000000000000000"
+    data_subnet_ids = ["subnet-00000000000000001", "subnet-00000000000000002"]
+  }
+}
+
 inputs = {
   environment = "dev"
 
@@ -14,9 +24,10 @@ inputs = {
   allocated_storage       = 20
   backup_retention_period = 1
 
-  # Ministack: create_subnet_group = false (no VPC support).
-  # In real AWS: set true and wire subnet_ids from VPC module outputs.
+  # Ministack: create_subnet_group = false (Ministack subnet groups are not functional).
+  # In real AWS: create_subnet_group = true, subnet_ids = dependency.vpc.outputs.data_subnet_ids
   create_subnet_group = false
+  subnet_ids          = dependency.vpc.outputs.data_subnet_ids
 
   # Ministack: storage_encrypted = false (no KMS support).
   # In real AWS: set true.

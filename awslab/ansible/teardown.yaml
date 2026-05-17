@@ -11,9 +11,7 @@
       ignore_errors: true
 
     - name: Remove awslab working directory
-      file:
-        path: ~/awslab
-        state: absent
+      shell: sudo rm -rf ~/awslab
 
     - name: Done
       debug:
