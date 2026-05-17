@@ -6,6 +6,15 @@ terraform {
   source = "../../../modules/waf"
 }
 
+dependency "alb" {
+  config_path = "../alb"
+
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs = {
+    alb_arn = "arn:aws:elasticloadbalancing:us-east-1:000000000000:loadbalancer/app/mock/0000000000000000"
+  }
+}
+
 inputs = {
   environment = "dev"
 
@@ -31,8 +40,7 @@ inputs = {
   # Custom rule groups — none for dev baseline.
   rule_groups = {}
 
-  # No ALB yet — wire ECS ALB ARN here when built.
-  alb_arn = null
+  alb_arn = dependency.alb.outputs.alb_arn
 
   # Ministack: WAF logging not supported.
   enable_logging = false

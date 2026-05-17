@@ -123,28 +123,13 @@ variable "task_security_group_ids" {
   default     = []
 }
 
-variable "alb_security_group_ids" {
-  description = "Security groups for the ALB. Empty for Ministack."
-  type        = list(string)
-  default     = []
-}
-
-# ── ALB ────────────────────────────────────────────────────────────────────────
-
-variable "create_alb" {
+variable "target_group_arn" {
   description = <<-EOT
-    Create an Application Load Balancer fronting the service.
-    Set false for Ministack (ALB requires VPC subnets for placement).
-    In real AWS: always true for internet-facing services.
+    ALB target group ARN from the alb module. ECS registers task IPs into this group.
+    Empty string = no ALB wiring (service runs without load balancer).
   EOT
-  type    = bool
-  default = true
-}
-
-variable "health_check_path" {
-  description = "HTTP path the ALB uses for health checks."
-  type        = string
-  default     = "/"
+  type    = string
+  default = ""
 }
 
 # ── IAM wiring ─────────────────────────────────────────────────────────────────

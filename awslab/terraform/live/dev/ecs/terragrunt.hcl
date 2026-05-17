@@ -11,27 +11,38 @@ dependency "iam" {
 
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
   mock_outputs = {
-    ci_deploy_role_arn       = "arn:aws:iam::000000000000:role/mock-ci-deploy"
-    permission_boundary_arn  = "arn:aws:iam::000000000000:policy/mock-boundary"
+    ci_deploy_role_arn      = "arn:aws:iam::000000000000:role/mock-ci-deploy"
+    permission_boundary_arn = "arn:aws:iam::000000000000:policy/mock-boundary"
+  }
+}
+
+dependency "vpc" {
+  config_path = "../vpc"
+
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs = {
+    private_subnet_ids = ["subnet-00000000000000001", "subnet-00000000000000002"]
+  }
+}
+
+dependency "alb" {
+  config_path = "../alb"
+
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs = {
+    target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:000000000000:targetgroup/mock/0000000000000000"
+    ecs_sg_id        = "sg-00000000000000000"
   }
 }
 
 inputs = {
   environment = "dev"
 
-  # Ministack: PutRolePermissionsBoundary not supported — skip boundary.
-  # Real AWS: permission_boundary_arn = dependency.iam.outputs.permission_boundary_arn
   permission_boundary_arn = ""
 
-  # Ministack: EC2 launch type + awsvpc network mode with fake subnets.
-  # Bridge mode crashes aws provider v4/v5 (nil NetworkConfiguration).
-  # Ministack accepts awsvpc with dummy subnet IDs.
-  # Real AWS: switch to FARGATE + real VPC subnets.
   launch_type  = "EC2"
   network_mode = "awsvpc"
 
-  # nginx:alpine as the default image — validates the ECS service lifecycle
-  # without needing a real application image pushed to ECR.
   container_image = "nginx:alpine"
   container_port  = 80
 
@@ -39,19 +50,11 @@ inputs = {
   cpu           = 256
   memory        = 512
 
-  # Ministack: ALB requires real VPC subnets for placement — not available here.
-  # Real AWS: set true and wire alb_security_group_ids + subnet_ids + vpc_id.
-  create_alb = false
+  # ALB wired via alb module — target group and ECS SG from its outputs.
+  target_group_arn        = dependency.alb.outputs.target_group_arn
+  subnet_ids              = dependency.vpc.outputs.private_subnet_ids
+  task_security_group_ids = [dependency.alb.outputs.ecs_sg_id]
 
-  # Wire SQS and RDS outputs into the task role.
-  # Ministack: hardcode ARNs — dependency outputs can't resolve in list literals.
-  # Real AWS pattern: use data sources or pass via CI env vars.
   sqs_queue_arns  = ["arn:aws:sqs:us-east-1:000000000000:platform-zero-dev-orders"]
   rds_secret_arns = ["arn:aws:secretsmanager:us-east-1:000000000000:secret:platform-zero/dev/rds/*"]
-
-  # Ministack awsvpc: fake subnet + security group IDs.
-  # Real AWS: use real VPC subnet IDs.
-  subnet_ids              = ["subnet-fake123"]
-  task_security_group_ids  = ["sg-fake456"]
-  alb_security_group_ids   = []
 }

@@ -1,11 +1,6 @@
 locals {
   name = "${var.project}-${var.environment}"
 
-  # ALB target type depends on network mode:
-  # awsvpc → each task has its own IP → target by IP
-  # bridge/host → tasks share the EC2 instance IP → target by instance
-  alb_target_type = var.network_mode == "awsvpc" ? "ip" : "instance"
-
   # bridge mode uses dynamic host port (0) so ECS picks a free port.
   # awsvpc mode omits hostPort — the containerPort IS the accessible port.
   host_port = var.network_mode == "bridge" ? 0 : var.container_port
@@ -103,60 +98,6 @@ resource "aws_ecs_task_definition" "this" {
   })
 }
 
-# ── ALB ────────────────────────────────────────────────────────────────────────
-# Application Load Balancer: HTTP(S) routing, health checks, sticky sessions.
-# Skipped in Ministack (create_alb = false) because ALB placement requires VPC subnets.
-# In real AWS: always use ALB in front of ECS services — never expose tasks directly.
-resource "aws_lb" "this" {
-  count = var.create_alb ? 1 : 0
-
-  name               = local.name
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = length(var.alb_security_group_ids) > 0 ? var.alb_security_group_ids : null
-  subnets            = length(var.subnet_ids) > 0 ? var.subnet_ids : null
-
-  tags = merge(local.common_tags, {
-    Name = local.name
-  })
-}
-
-resource "aws_lb_target_group" "this" {
-  count = var.create_alb ? 1 : 0
-
-  name        = local.name
-  port        = var.container_port
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id != "" ? var.vpc_id : null
-  target_type = local.alb_target_type
-
-  health_check {
-    path                = var.health_check_path
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
-    matcher             = "200"
-  }
-
-  tags = merge(local.common_tags, {
-    Name = local.name
-  })
-}
-
-resource "aws_lb_listener" "http" {
-  count = var.create_alb ? 1 : 0
-
-  load_balancer_arn = aws_lb.this[0].arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.this[0].arn
-  }
-}
-
 # ── ECS service ────────────────────────────────────────────────────────────────
 # The service maintains desired_count running task replicas.
 # On task failure ECS automatically replaces it.
@@ -181,18 +122,16 @@ resource "aws_ecs_service" "this" {
     }
   }
 
-  # Wire service to ALB when enabled.
+  # Wire service to ALB target group when provided.
+  # target_group_arn comes from the alb module output.
   dynamic "load_balancer" {
-    for_each = var.create_alb ? [1] : []
+    for_each = var.target_group_arn != "" ? [1] : []
     content {
-      target_group_arn = aws_lb_target_group.this[0].arn
+      target_group_arn = var.target_group_arn
       container_name   = var.project
       container_port   = var.container_port
     }
   }
-
-  # Listener must exist before the service — ECS validates ALB registration on create.
-  depends_on = [aws_lb_listener.http]
 
   tags = merge(local.common_tags, {
     Name = local.name

@@ -6,6 +6,15 @@ terraform {
   source = "../../../modules/waf"
 }
 
+dependency "alb" {
+  config_path = "../alb"
+
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs = {
+    alb_arn = "arn:aws:elasticloadbalancing:us-east-1:000000000002:loadbalancer/app/mock/0000000000000000"
+  }
+}
+
 inputs = {
   environment = "staging"
 
@@ -27,7 +36,7 @@ inputs = {
 
   rule_groups = {}
 
-  alb_arn = null
+  alb_arn = dependency.alb.outputs.alb_arn
 
   enable_logging = false
 }

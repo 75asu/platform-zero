@@ -6,24 +6,31 @@ terraform {
   source = "../../../modules/route53"
 }
 
+dependency "alb" {
+  config_path = "../alb"
+
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs = {
+    alb_dns_name       = "mock-alb.us-east-1.elb.amazonaws.com"
+    alb_hosted_zone_id = "Z35SXDOTRQ7X7K"
+  }
+}
+
 inputs = {
   environment = "staging"
   zone_name   = "staging.binarysquad.org"
 
   force_destroy = true
 
-  enable_query_logging    = false   # Ministack doesn't support Route53 query logging
+  enable_query_logging     = false
   query_log_retention_days = 30
 
-  # Staging mirrors dev — separate zone for multi-env isolation.
-  # Real AWS: each environment gets its own hosted zone in its own account.
   records = {
     app = {
       name = "app"
       type = "CNAME"
       ttl  = 300
-      # Placeholder — replace with actual ECS ALB DNS when wired
-      values = ["placeholder.local"]
+      values = [dependency.alb.outputs.alb_dns_name]
     }
   }
 

@@ -48,17 +48,3 @@ output "log_group_name" {
   value       = aws_cloudwatch_log_group.this.name
 }
 
-output "alb_dns_name" {
-  description = "ALB DNS name — null when create_alb = false (Ministack)"
-  value       = var.create_alb ? aws_lb.this[0].dns_name : null
-}
-
-output "alb_arn" {
-  description = "ALB ARN — null when create_alb = false (Ministack)"
-  value       = var.create_alb ? aws_lb.this[0].arn : null
-}
-
-output "target_group_arn" {
-  description = "ALB target group ARN — null when create_alb = false (Ministack)"
-  value       = var.create_alb ? aws_lb_target_group.this[0].arn : null
-}
