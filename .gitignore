@@ -18,8 +18,6 @@ k8slab/kubeconfig.yaml
 .DS_Store
 *.swp
 *.swo
-PLAN.md
-
 # local planning notes — never push
 # awslab/docs/ — unignored, plan files are tracked
 gcplab/docs/

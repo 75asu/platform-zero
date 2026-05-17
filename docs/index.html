@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="platform-zero — a self-contained SRE platform kit. From blank machine to full platform with one command.">
+  <title>platform-zero</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fragment+Mono:ital@0;1&family=Syne:wght@700;800&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:           #090c10;
+      --surface:      #0d1118;
+      --surface-hover:#101520;
+      --border:       #1a2235;
+      --border-hover: #253047;
+      --text:         #b8c4d8;
+      --text-muted:   #6b7a95;
+      --text-dim:     #38435a;
+      --text-dimmer:  #222a3a;
+      --accent:       #2bcfba;
+      --code-bg:      #060810;
+      --max-w:        860px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ── Animations ─────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade { animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .d0  { animation-delay: 0ms; }
+    .d1  { animation-delay: 120ms; }
+    .d2  { animation-delay: 240ms; }
+    .d3  { animation-delay: 360ms; }
+    .d4  { animation-delay: 480ms; }
+    .d5  { animation-delay: 600ms; }
+
+    /* ── Layout ─────────────────────────────────────────────── */
+    .container {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 28px;
+    }
+
+    /* ── Nav ────────────────────────────────────────────────── */
+    nav {
+      border-bottom: 1px solid var(--border);
+      padding: 18px 0;
+    }
+
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-mark {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-decoration: none;
+      letter-spacing: 0.04em;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-decoration: none;
+      letter-spacing: 0.06em;
+      opacity: 0.6;
+      transition: opacity 0.15s ease;
+    }
+
+    .nav-links a:hover { opacity: 1; }
+
+    /* ── Hero ───────────────────────────────────────────────── */
+    .hero {
+      padding: 88px 0 80px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(36px, 6.5vw, 68px);
+      font-weight: 800;
+      color: #dde0ea;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin-bottom: 22px;
+      white-space: nowrap;
+      overflow: visible;
+      word-break: keep-all;
+    }
+
+    .hero h1 .z { color: var(--accent); }
+
+    .hero-tagline {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+      letter-spacing: 0.025em;
+    }
+
+    .hero-body {
+      font-size: 15.5px;
+      color: #55647e;
+      max-width: 520px;
+      line-height: 1.75;
+      font-weight: 300;
+    }
+
+    /* ── Section shell ──────────────────────────────────────── */
+    section {
+      padding: 64px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-label {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      margin-bottom: 40px;
+      display: block;
+    }
+
+    /* ── Labs ───────────────────────────────────────────────── */
+    .tier-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 1px;
+    }
+
+    .tier-label {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+      padding: 10px 14px 10px 0;
+      border-bottom: 1px solid var(--border);
+      flex: 1;
+    }
+
+    .tier-label span {
+      color: var(--text-dimmer);
+      margin-right: 8px;
+    }
+
+    /* Grid trick: 1px gap on a dark background = seamless cell borders */
+    .labs-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      margin-bottom: 36px;
+    }
+
+    .labs-grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+
+    .lab-card {
+      background: var(--surface);
+      padding: 22px 22px 24px;
+      transition: background 0.12s ease;
+    }
+
+    .lab-card:hover { background: var(--surface-hover); }
+
+    .lab-card-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .lab-name {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 13px;
+      color: #cdd0dd;
+    }
+
+    .lab-desc {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+
+    /* Tier 2 dependency indicator */
+    .tier-connector {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 0;
+      margin-bottom: 0;
+    }
+
+    .tier-connector-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .tier-connector-label {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 10px;
+      color: var(--text-dimmer);
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    /* ── Badges ─────────────────────────────────────────────── */
+    .badge {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 9.5px;
+      padding: 2px 6px;
+      border: 1px solid;
+      border-radius: 2px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-live     { color: var(--accent);       border-color: rgba(229,164,41,0.5); }
+    .badge-progress { color: var(--text-muted);   border-color: #3a3d48; }
+    .badge-planned  { color: var(--text-dim);     border-color: #282b34; }
+
+    /* ── Quick start ────────────────────────────────────────── */
+    .steps { display: flex; flex-direction: column; gap: 36px; }
+
+    .step {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 0;
+      align-items: start;
+    }
+
+    .step-num {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 12px;
+      color: var(--accent);
+      padding-top: 1px;
+      letter-spacing: 0.04em;
+    }
+
+    .step-title {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 12.5px;
+      color: #c4c7d4;
+      margin-bottom: 10px;
+      letter-spacing: 0.02em;
+    }
+
+    .step-body {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      line-height: 1.65;
+      font-weight: 300;
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      padding: 16px 20px;
+      overflow-x: auto;
+      border-radius: 2px;
+    }
+
+    code {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 12px;
+      color: #8a8f9e;
+      line-height: 2;
+    }
+
+    code .cm { color: var(--text-dimmer); }
+
+    /* ── GitOps rule ────────────────────────────────────────── */
+    .rule-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--border);
+    }
+
+    .rule-table tr { border-bottom: 1px solid var(--border); }
+    .rule-table tr:last-child { border-bottom: none; }
+
+    .rule-table td {
+      padding: 15px 20px;
+      font-size: 13.5px;
+      vertical-align: middle;
+    }
+
+    .rule-table td:first-child {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 12.5px;
+      color: var(--accent);
+      width: 110px;
+      border-right: 1px solid var(--border);
+      padding-left: 20px;
+    }
+
+    .rule-table td:nth-child(2) {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dimmer);
+      width: 30px;
+      text-align: center;
+      border-right: 1px solid var(--border);
+      padding: 15px 12px;
+    }
+
+    .rule-table td:last-child {
+      color: var(--text-muted);
+      font-size: 13.5px;
+      font-weight: 300;
+    }
+
+    /* ── Plan section ───────────────────────────────────────── */
+    .plan-body {
+      font-size: 14px;
+      color: #55647e;
+      max-width: 520px;
+      line-height: 1.75;
+      font-weight: 300;
+      margin-bottom: 22px;
+    }
+
+    .plan-link {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      opacity: 0.8;
+      transition: opacity 0.15s;
+      letter-spacing: 0.02em;
+    }
+
+    .plan-link:hover { opacity: 1; }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    footer {
+      padding: 28px 0;
+    }
+
+    footer .container {
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+
+    .footer-item {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 0.03em;
+    }
+
+    .footer-sep {
+      font-family: 'Fragment Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dimmer);
+      margin: 0 12px;
+    }
+
+    footer a {
+      color: inherit;
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    footer a:hover { color: var(--text-muted); }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .labs-grid,
+      .labs-grid-3 { grid-template-columns: 1fr; }
+
+      .hero          { padding: 56px 0 52px; }
+      section        { padding: 48px 0; }
+      .container     { padding: 0 20px; }
+
+      .nav-mark      { display: none; }
+      .nav-links     { gap: 20px; }
+
+      .step          { grid-template-columns: 36px 1fr; }
+
+      footer .container { flex-wrap: wrap; gap: 4px; }
+      .footer-sep    { margin: 0 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="fade d0">
+    <div class="container">
+      <a href="#" class="nav-mark">platform-zero /</a>
+      <ul class="nav-links">
+        <li><a href="https://github.com/75asu/platform-zero" target="_blank" rel="noopener">GitHub</a></li>
+        <li><a href="#plan">PLAN.md</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <div class="hero fade d0">
+      <h1>platform<span class="z">-zero</span></h1>
+      <p class="hero-tagline">// production infrastructure. one command.</p>
+      <p class="hero-body">A self-contained SRE platform kit that runs on a single Linux machine with SSH access. No cloud account. No managed services. Real tools, real patterns, real understanding.</p>
+    </div>
+
+    <section id="labs" class="fade d1">
+      <span class="section-label">// labs</span>
+
+      <div class="tier-header">
+        <p class="tier-label"><span>//</span> foundation - runs standalone</p>
+      </div>
+      <div class="labs-grid">
+        <div class="lab-card">
+          <div class="lab-card-top">
+            <span class="lab-name">awslab</span>
+            <span class="badge badge-live">live</span>
+          </div>
+          <p class="lab-desc">AWS infrastructure - Terraform modules, Terragrunt multi-env, 11 modules across dev + staging. Runs against Ministack locally.</p>
+        </div>
+        <div class="lab-card">
+          <div class="lab-card-top">
+            <span class="lab-name">k8slab</span>
+            <span class="badge badge-progress">in progress</span>
+          </div>
+          <p class="lab-desc">Kubernetes platform - k3s, ArgoCD app-of-apps, Vault + ESO, Gitea CI, full LGTM stack. GitOps from day one.</p>
+        </div>
+        <div class="lab-card">
+          <div class="lab-card-top">
+            <span class="lab-name">gcplab</span>
+            <span class="badge badge-planned">planned</span>
+          </div>
+          <p class="lab-desc">GCP infrastructure - mirror of awslab for Google Cloud. Terraform + Terragrunt against local GCP emulators.</p>
+        </div>
+        <div class="lab-card">
+          <div class="lab-card-top">
+            <span class="lab-name">dblab</span>
+            <span class="badge badge-planned">planned</span>
+          </div>
+          <p class="lab-desc">Database operations - PostgreSQL HA with Patroni, PgBouncer, WAL-G backups, PITR testing, CDC with Debezium, fire drills.</p>
+        </div>
+      </div>
+
+      <div class="tier-connector">
+        <div class="tier-connector-line"></div>
+        <span class="tier-connector-label">advanced layers - depend on foundation above</span>
+        <div class="tier-connector-line"></div>
+      </div>
+
+      <div class="tier-header">
+        <p class="tier-label"><span>//</span> advanced - layers on top of foundation</p>
+      </div>
+      <div class="labs-grid-3">
+        <div class="lab-card">
+          <div class="lab-card-top">
+            <span class="lab-name">networkinglab</span>
+            <span class="badge badge-planned">planned</span>
+          </div>
+          <p class="lab-desc">Networking internals - eBPF packet tracing, WireGuard from scratch, BGP with FRR, Cilium network policies, Linkerd mTLS dissection.</p>
+        </div>
+        <div class="lab-card">
+          <div class="lab-card-top">
+            <span class="lab-name">securitylab</span>
+            <span class="badge badge-planned">planned</span>
+          </div>
+          <p class="lab-desc">Supply chain and runtime - Trivy/Grype scanning, Cosign image signing, SBOM attestations, Falco runtime rules, OPA/Rego policies, CIS benchmarks.</p>
+        </div>
+        <div class="lab-card">
+          <div class="lab-card-top">
+            <span class="lab-name">platformlab</span>
+            <span class="badge badge-planned">planned</span>
+          </div>
+          <p class="lab-desc">Internal developer platform - Backstage IDP, service catalog wired to awslab + k8slab, golden path templates, Crossplane self-service infra.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="quickstart" class="fade d2">
+      <span class="section-label">// quick start</span>
+      <div class="steps">
+        <div class="step">
+          <span class="step-num">01</span>
+          <div>
+            <p class="step-title">Prerequisites</p>
+            <p class="step-body">A Linux machine with SSH access, 4GB+ RAM. Ansible, kubectl, and git on your local machine.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">02</span>
+          <div>
+            <p class="step-title">Configure</p>
+            <pre><code>cp .env.example .env
+<span class="cm"># fill in TARGET_HOST, TARGET_USER, SSH_KEY_PATH</span></code></pre>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">03</span>
+          <div>
+            <p class="step-title">Run</p>
+            <pre><code>make up      <span class="cm"># blank machine → full platform (~10 min)</span>
+make down    <span class="cm"># full teardown, machine is clean</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="rule" class="fade d3">
+      <span class="section-label">// the gitops rule</span>
+      <table class="rule-table">
+        <tbody>
+          <tr>
+            <td>Ansible</td>
+            <td>→</td>
+            <td>OS layer only (k3s, kubeconfig)</td>
+          </tr>
+          <tr>
+            <td>kubectl</td>
+            <td>→</td>
+            <td>Bootstrap only. Runs once, ever.</td>
+          </tr>
+          <tr>
+            <td>git push</td>
+            <td>→</td>
+            <td>Everything else. This is the only way to change cluster state.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="plan" class="fade d4" style="border-bottom: none;">
+      <span class="section-label">// plan</span>
+      <p class="plan-body">The full build plan - phases, interview angles, and runbooks - lives in PLAN.md at the repo root. It is the source of truth for what gets built and why.</p>
+      <a href="https://raw.githubusercontent.com/75asu/platform-zero/main/PLAN.md"
+         class="plan-link" target="_blank" rel="noopener">View PLAN.md on GitHub →</a>
+    </section>
+
+  </div>
+
+  <footer class="fade d5">
+    <div class="container">
+      <span class="footer-item">open source · MIT license</span>
+      <span class="footer-sep">·</span>
+      <span class="footer-item">by <a href="https://75asu.pages.dev" target="_blank" rel="noopener">@75asu</a></span>
+    </div>
+  </footer>
+
+</body>
+</html>
