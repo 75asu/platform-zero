@@ -22,3 +22,4 @@ k8slab/kubeconfig.yaml
 # awslab/docs/ — unignored, plan files are tracked
 gcplab/docs/
 k8slab/docs/
+docs/marketing/
