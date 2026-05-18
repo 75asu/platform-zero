@@ -21,19 +21,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fragment+Mono:ital@0;1&family=Syne:wght@700;800&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><clipPath id='c'><circle cx='50' cy='50' r='33'/></clipPath></defs><circle cx='50' cy='50' r='38' fill='none' stroke='%23818cf8' stroke-width='8'/><g clip-path='url(%23c)'><line x1='0' y1='36' x2='100' y2='36' stroke='%23818cf8' stroke-width='5.5' opacity='.28'/><line x1='0' y1='50' x2='100' y2='50' stroke='%23818cf8' stroke-width='5.5' opacity='.72'/><line x1='0' y1='64' x2='100' y2='64' stroke='%23818cf8' stroke-width='5.5' opacity='.28'/></g></svg>">
   <style>
     :root {
-      --bg:           #090c10;
-      --surface:      #0d1118;
-      --surface-hover:#101520;
-      --border:       #1a2235;
-      --border-hover: #253047;
-      --text:         #b8c4d8;
-      --text-muted:   #6b7a95;
-      --text-dim:     #38435a;
-      --text-dimmer:  #222a3a;
-      --accent:       #2bcfba;
-      --code-bg:      #060810;
+      --bg:           #05060f;
+      --surface:      #0d0e1f;
+      --surface-hover:#0f1025;
+      --border:       #1e2040;
+      --border-hover: #252850;
+      --text:         #c7d2fe;
+      --text-muted:   #6b7aab;
+      --text-dim:     #4a5590;
+      --text-dimmer:  #383d6a;
+      --accent:       #818cf8;
+      --code-bg:      #03040c;
       --max-w:        860px;
     }
 
@@ -85,12 +86,25 @@
     }
 
     .nav-mark {
-      font-family: 'Fragment Mono', monospace;
-      font-size: 12px;
-      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 10px;
       text-decoration: none;
-      letter-spacing: 0.04em;
     }
+
+    .nav-mark svg {
+      flex-shrink: 0;
+    }
+
+    .nav-brand {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .nav-brand .z { color: var(--accent); }
 
     .nav-links {
       display: flex;
@@ -100,7 +114,7 @@
 
     .nav-links a {
       font-family: 'Fragment Mono', monospace;
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-muted);
       text-decoration: none;
       letter-spacing: 0.06em;
@@ -120,7 +134,7 @@
       font-family: 'Syne', sans-serif;
       font-size: clamp(36px, 6.5vw, 68px);
       font-weight: 800;
-      color: #dde0ea;
+      color: #c7d2fe;
       letter-spacing: -0.03em;
       line-height: 1;
       margin-bottom: 22px;
@@ -133,18 +147,18 @@
 
     .hero-tagline {
       font-family: 'Fragment Mono', monospace;
-      font-size: 12.5px;
+      font-size: 13px;
       color: var(--text-muted);
       margin-bottom: 28px;
       letter-spacing: 0.025em;
     }
 
     .hero-body {
-      font-size: 15.5px;
-      color: #55647e;
+      font-size: 16px;
+      color: var(--text-muted);
       max-width: 520px;
       line-height: 1.75;
-      font-weight: 300;
+      font-weight: 400;
     }
 
     /* ── Section shell ──────────────────────────────────────── */
@@ -155,7 +169,7 @@
 
     .section-label {
       font-family: 'Fragment Mono', monospace;
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.14em;
@@ -173,7 +187,7 @@
 
     .tier-label {
       font-family: 'Fragment Mono', monospace;
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-dim);
       letter-spacing: 0.08em;
       white-space: nowrap;
@@ -224,11 +238,11 @@
     .lab-name {
       font-family: 'Fragment Mono', monospace;
       font-size: 13px;
-      color: #cdd0dd;
+      color: #a5b0e0;
     }
 
     .lab-desc {
-      font-size: 12.5px;
+      font-size: 13px;
       color: var(--text-muted);
       line-height: 1.65;
     }
@@ -259,7 +273,7 @@
     /* ── Badges ─────────────────────────────────────────────── */
     .badge {
       font-family: 'Fragment Mono', monospace;
-      font-size: 9.5px;
+      font-size: 10px;
       padding: 2px 6px;
       border: 1px solid;
       border-radius: 2px;
@@ -268,9 +282,9 @@
       letter-spacing: 0.04em;
     }
 
-    .badge-live     { color: var(--accent);       border-color: rgba(229,164,41,0.5); }
-    .badge-progress { color: var(--text-muted);   border-color: #3a3d48; }
-    .badge-planned  { color: var(--text-dim);     border-color: #282b34; }
+    .badge-live     { color: var(--accent);       border-color: rgba(129,140,248,0.4); }
+    .badge-progress { color: var(--text-muted);   border-color: rgba(107,122,171,0.4); }
+    .badge-planned  { color: var(--text-dim);     border-color: rgba(74,85,144,0.4); }
 
     /* ── Quick start ────────────────────────────────────────── */
     .steps { display: flex; flex-direction: column; gap: 36px; }
@@ -292,18 +306,18 @@
 
     .step-title {
       font-family: 'Fragment Mono', monospace;
-      font-size: 12.5px;
-      color: #c4c7d4;
+      font-size: 13px;
+      color: #b0b8e8;
       margin-bottom: 10px;
       letter-spacing: 0.02em;
     }
 
     .step-body {
-      font-size: 13.5px;
+      font-size: 14px;
       color: var(--text-muted);
       margin-bottom: 14px;
       line-height: 1.65;
-      font-weight: 300;
+      font-weight: 400;
     }
 
     pre {
@@ -321,7 +335,7 @@
       line-height: 2;
     }
 
-    code .cm { color: var(--text-dimmer); }
+    code .cm { color: var(--text-muted); }
 
     /* ── GitOps rule ────────────────────────────────────────── */
     .rule-table {
@@ -350,7 +364,7 @@
 
     .rule-table td:nth-child(2) {
       font-family: 'Fragment Mono', monospace;
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-dimmer);
       width: 30px;
       text-align: center;
@@ -360,17 +374,17 @@
 
     .rule-table td:last-child {
       color: var(--text-muted);
-      font-size: 13.5px;
-      font-weight: 300;
+      font-size: 14px;
+      font-weight: 400;
     }
 
     /* ── Plan section ───────────────────────────────────────── */
     .plan-body {
-      font-size: 14px;
-      color: #55647e;
+      font-size: 15px;
+      color: var(--text-muted);
       max-width: 520px;
       line-height: 1.75;
-      font-weight: 300;
+      font-weight: 400;
       margin-bottom: 22px;
     }
 
@@ -399,14 +413,14 @@
 
     .footer-item {
       font-family: 'Fragment Mono', monospace;
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-dim);
       letter-spacing: 0.03em;
     }
 
     .footer-sep {
       font-family: 'Fragment Mono', monospace;
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-dimmer);
       margin: 0 12px;
     }
@@ -442,7 +456,18 @@
 
   <nav class="fade d0">
     <div class="container">
-      <a href="#" class="nav-mark">platform-zero /</a>
+      <a href="#" class="nav-mark">
+        <svg width="26" height="26" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <defs><clipPath id="nav-c"><circle cx="50" cy="50" r="33"/></clipPath></defs>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#818cf8" stroke-width="8"/>
+          <g clip-path="url(#nav-c)">
+            <line x1="0" y1="36" x2="100" y2="36" stroke="#818cf8" stroke-width="5.5" opacity=".28"/>
+            <line x1="0" y1="50" x2="100" y2="50" stroke="#818cf8" stroke-width="5.5" opacity=".72"/>
+            <line x1="0" y1="64" x2="100" y2="64" stroke="#818cf8" stroke-width="5.5" opacity=".28"/>
+          </g>
+        </svg>
+        <span class="nav-brand">platform-<span class="z">zero</span></span>
+      </a>
       <ul class="nav-links">
         <li><a href="https://github.com/75asu/platform-zero" target="_blank" rel="noopener">GitHub</a></li>
         <li><a href="#plan">PLAN.md</a></li>
