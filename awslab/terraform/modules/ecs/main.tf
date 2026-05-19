@@ -78,6 +78,12 @@ resource "aws_ecs_task_definition" "this" {
 
       environment = var.container_environment
 
+      # Secrets pulled from Secrets Manager at task startup by the ECS agent.
+      # Injection pattern: ECS agent calls GetSecretValue, injects as env var.
+      # App code reads a plain env var — never calls Secrets Manager directly.
+      # This is safer than passing secret ARNs to var.container_environment.
+      secrets = var.container_secrets
+
       # Structured JSON logs routed to CloudWatch Logs.
       # awslogs-stream-prefix groups streams by task ID under this prefix.
       logConfiguration = {
@@ -112,13 +118,22 @@ resource "aws_ecs_service" "this" {
   deployment_minimum_healthy_percent = var.deployment_minimum_healthy_percent
   deployment_maximum_percent         = var.deployment_maximum_percent
 
+  # ECS Exec: opens an interactive shell into a running task via SSM Session Manager.
+  # Equivalent to kubectl exec — use for debugging without exposing SSH.
+  # Requires: SSM agent in container image + ssmmessages permissions on task role.
+  # Real AWS: enable in dev/staging for debugging. Prod: disable (audit risk).
+  # Ministack: setting this has no effect — SSM channel is not simulated.
+  enable_execute_command = var.enable_execute_command
+
   # awsvpc only — bridge mode has no per-task network config.
   dynamic "network_configuration" {
     for_each = var.network_mode == "awsvpc" ? [1] : []
     content {
       subnets          = var.subnet_ids
       security_groups  = var.task_security_group_ids
-      assign_public_ip = true
+      # Prod: false — tasks in private subnets, outbound via NAT Gateway.
+      # Ministack: true is safe (no real NAT), but default is now false to match prod intent.
+      assign_public_ip = var.assign_public_ip
     }
   }
 

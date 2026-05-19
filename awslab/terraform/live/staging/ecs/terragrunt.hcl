@@ -54,6 +54,9 @@ inputs = {
   deployment_minimum_healthy_percent = 50
   deployment_maximum_percent         = 200
 
+  assign_public_ip       = false
+  enable_execute_command = true
+
   target_group_arn        = dependency.alb.outputs.target_group_arn
   subnet_ids              = dependency.vpc.outputs.private_subnet_ids
   task_security_group_ids = [dependency.alb.outputs.ecs_sg_id]
@@ -61,4 +64,11 @@ inputs = {
   # Staging account is 000000000002.
   sqs_queue_arns  = ["arn:aws:sqs:us-east-1:000000000002:platform-zero-staging-orders"]
   rds_secret_arns = ["arn:aws:secretsmanager:us-east-1:000000000002:secret:platform-zero/staging/rds/*"]
+
+  container_secrets = [
+    {
+      name      = "DB_PASSWORD"
+      valueFrom = "arn:aws:secretsmanager:us-east-1:000000000002:secret:platform-zero/staging/rds/credentials"
+    }
+  ]
 }

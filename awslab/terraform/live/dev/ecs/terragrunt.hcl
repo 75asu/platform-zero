@@ -50,6 +50,14 @@ inputs = {
   cpu           = 256
   memory        = 512
 
+  # Prod: false — tasks in private subnets, NAT for outbound.
+  # Ministack: no VPC/ENI allocation, value has no effect.
+  assign_public_ip = false
+
+  # Enable ECS Exec for debugging (equivalent to kubectl exec).
+  # Dev: true. Prod: false (audit risk).
+  enable_execute_command = true
+
   # ALB wired via alb module — target group and ECS SG from its outputs.
   target_group_arn        = dependency.alb.outputs.target_group_arn
   subnet_ids              = dependency.vpc.outputs.private_subnet_ids
@@ -57,4 +65,13 @@ inputs = {
 
   sqs_queue_arns  = ["arn:aws:sqs:us-east-1:000000000000:platform-zero-dev-orders"]
   rds_secret_arns = ["arn:aws:secretsmanager:us-east-1:000000000000:secret:platform-zero/dev/rds/*"]
+
+  # Secrets pulled from Secrets Manager at task startup (injected as env vars by ECS agent).
+  # Format: valueFrom = secret ARN or ARN with JSON key suffix (e.g. arn:...:secret:name::key::)
+  container_secrets = [
+    {
+      name      = "DB_PASSWORD"
+      valueFrom = "arn:aws:secretsmanager:us-east-1:000000000000:secret:platform-zero/dev/rds/credentials"
+    }
+  ]
 }

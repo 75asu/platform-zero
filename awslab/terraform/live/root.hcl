@@ -45,6 +45,9 @@ provider "aws" {
     ecs            = "${local.aws_endpoint}"
     ecr            = "${local.aws_endpoint}"
     cloudwatchlogs = "${local.aws_endpoint}"
+    cloudwatch     = "${local.aws_endpoint}"
+    elasticache    = "${local.aws_endpoint}"
+    kms            = "${local.aws_endpoint}"
     elbv2          = "${local.aws_endpoint}"
   }
 }

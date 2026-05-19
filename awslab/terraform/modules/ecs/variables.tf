@@ -36,10 +36,25 @@ variable "container_port" {
 }
 
 variable "container_environment" {
-  description = "Environment variables injected into the container at runtime."
+  description = "Non-sensitive environment variables injected into the container at runtime."
   type = list(object({
     name  = string
     value = string
+  }))
+  default = []
+}
+
+variable "container_secrets" {
+  description = <<-EOT
+    Secrets pulled from Secrets Manager or SSM Parameter Store at task startup.
+    Format: [{ name = "DB_PASSWORD", valueFrom = "arn:aws:secretsmanager:..." }]
+    The ECS agent calls GetSecretValue and injects the result as a plain env var.
+    App code reads a normal env var — never needs AWS SDK calls for secrets.
+    Empty list = no secrets injection (plaintext env vars only).
+  EOT
+  type = list(object({
+    name      = string
+    valueFrom = string
   }))
   default = []
 }
@@ -104,6 +119,28 @@ variable "deployment_maximum_percent" {
 }
 
 # ── Networking ─────────────────────────────────────────────────────────────────
+
+variable "assign_public_ip" {
+  description = <<-EOT
+    Whether to assign a public IP to Fargate tasks (awsvpc mode only).
+    Prod: false — tasks in private subnets, outbound via NAT Gateway. Never publicly reachable.
+    Ministack: value has no effect (no real ENI allocation), but keep false to match prod intent.
+  EOT
+  type    = bool
+  default = false
+}
+
+variable "enable_execute_command" {
+  description = <<-EOT
+    Enable ECS Exec — interactive shell into a running task via SSM Session Manager.
+    Equivalent to kubectl exec. Use for debugging without exposing SSH.
+    Requires SSM agent in container image and ssmmessages:* on the task role.
+    Dev/staging: true for debugging. Prod: false (every exec session is an audit event).
+    Ministack: field is accepted but SSM channel is not simulated.
+  EOT
+  type    = bool
+  default = false
+}
 
 variable "subnet_ids" {
   description = "Subnets for awsvpc tasks and ALB placement. Empty for Ministack (no VPC)."

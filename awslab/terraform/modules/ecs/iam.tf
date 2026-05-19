@@ -96,7 +96,21 @@ resource "aws_iam_policy" "task" {
           "ecs:DescribeTaskDefinition"
         ]
         Resource = "*"
-      }]
+      }],
+      # ECS Exec requires SSM Session Manager channel on the task role.
+      # Without these, enable_execute_command = true silently fails.
+      # ssmmessages = control plane, s3/logs = optional exec session recording.
+      var.enable_execute_command ? [{
+        Sid    = "ECSExecSSM"
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ]
+        Resource = "*"
+      }] : []
     )
   })
 

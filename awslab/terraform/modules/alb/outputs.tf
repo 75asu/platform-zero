@@ -32,3 +32,8 @@ output "listener_arn" {
   description = "HTTP listener ARN — used for listener rule attachments"
   value       = aws_lb_listener.http.arn
 }
+
+output "arn_suffix" {
+  description = "ALB ARN suffix (app/{name}/{id}) — used as CloudWatch dimension for ALB metrics"
+  value       = aws_lb.this.arn_suffix
+}

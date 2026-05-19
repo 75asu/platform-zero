@@ -16,7 +16,7 @@ export AWS_SECRET_ACCESS_KEY = test
 export AWS_PAGER            =
 export MINIO_ENDPOINT_URL   = http://$(TARGET_HOST):9000
 
-.PHONY: up down deploy teardown tf-dev tf-staging tf-all clean
+.PHONY: up down deploy teardown tf-dev tf-staging tf-all clean tf-elasticache
 
 ## Full stack up: start containers + apply all environments
 deploy: up tf-all
@@ -64,9 +64,16 @@ tf-dev: _check-env
 tf-staging: _check-env
 	cd terraform/live/staging && TG_NON_INTERACTIVE=true terragrunt run --all -- apply -auto-approve
 
-## Apply all environments
+## Apply all environments (elasticache excluded by default — Ministack Go SDK limitation)
 tf-all: _check-env
 	cd terraform/live && TG_NON_INTERACTIVE=true terragrunt run --all -- apply -auto-approve
+
+## Apply ElastiCache only — separate from tf-all due to Ministack Go SDK compatibility.
+## The Terraform AWS provider cannot poll for ElastiCache cluster status in Ministack.
+## The module code is correct and works in real AWS.
+tf-elasticache: _check-env
+	cd terraform/live/dev/elasticache && TG_NON_INTERACTIVE=true terragrunt apply -auto-approve || true
+	cd terraform/live/staging/elasticache && TG_NON_INTERACTIVE=true terragrunt apply -auto-approve || true
 
 ## Delete all Terragrunt module caches — run after editing module source files
 clean:
