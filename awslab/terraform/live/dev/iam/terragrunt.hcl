@@ -12,10 +12,13 @@ inputs = {
   github_org  = "75asu"
   github_repo = "platform-zero"
 
-  # Ministack doesn't implement PutRolePermissionsBoundary — disable locally.
+  # Floci doesn't implement CreateOpenIDConnectProvider — skip in lab.
+  # In real AWS: remove this line (default = true).
+  create_oidc_provider = false
+
+  # Floci doesn't implement PutRolePermissionsBoundary — disable locally.
   # In real AWS this would be true (the module default).
   enable_permission_boundary = false
 
-  # app_queue_arn left empty — wired in Phase 2 (SQS)
   # cross_account_trusted_account_id left empty — cross-account role not created
 }

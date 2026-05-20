@@ -27,6 +27,8 @@ resource "aws_iam_role" "task_execution" {
 # AWS-managed policy covering all ECS agent needs.
 # Grants: ecr:GetAuthorizationToken, ecr:BatchGetImage, logs:CreateLogStream,
 # logs:PutLogEvents, secretsmanager:GetSecretValue (for secrets injection).
+# Ministack pre-seeds this policy (and auto-vivifies any others via
+# MINISTACK_AUTOCREATE_AWS_MANAGED=1 in docker-compose).
 resource "aws_iam_role_policy_attachment" "task_execution" {
   role       = aws_iam_role.task_execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"

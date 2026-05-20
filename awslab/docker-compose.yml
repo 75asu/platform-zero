@@ -5,10 +5,13 @@ services:
     ports:
       - "4566:4566"
     environment:
-      - MINISTACK_REGION=us-east-1
-      - MINISTACK_ACCOUNT_ID=000000000000
-      - LOG_LEVEL=INFO
-      - PERSIST_STATE=0
+      # Auto-vivify any AWS managed policy ARN not in the pre-seeded catalog.
+      # Required for AmazonECSTaskExecutionRolePolicy and any other managed
+      # policy your Terraform code references that Ministack doesn't pre-seed.
+      - MINISTACK_AUTOCREATE_AWS_MANAGED=1
+      # Let Ministack spawn ECS task containers and ElastiCache nodes on the
+      # same compose network so they can reach each other.
+      - DOCKER_NETWORK=awslab_default
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
@@ -17,7 +20,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-      start_period: 10s
+      start_period: 15s
 
   minio:
     image: minio/minio:latest
@@ -150,7 +153,8 @@ services:
             "AuthUserIDClaim": "email",
             "AuthKeysLocation": "http://dex:5556/dex/keys",
             "OIDCConfigEndpoint": "",
-            "LetsEncryptDomain": ""
+            "LetsEncryptDomain": "",
+            "IdpSignKeyRefreshEnabled": true
           },
           "IdpManagerConfig": {
             "ManagerType": "none",

@@ -54,6 +54,6 @@ output "nat_public_ips" {
 }
 
 output "default_security_group_id" {
-  description = "Default security group ID (locked down — do not attach to resources)"
-  value       = aws_default_security_group.default.id
+  description = "Default security group ID (locked down — do not attach to resources). Empty string when lockdown_default_sg = false."
+  value       = length(aws_default_security_group.default) > 0 ? aws_default_security_group.default[0].id : ""
 }

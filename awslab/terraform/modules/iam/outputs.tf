@@ -5,7 +5,7 @@ output "permission_boundary_arn" {
 
 output "github_oidc_provider_arn" {
   description = "ARN of the GitHub OIDC provider — reuse for additional OIDC roles"
-  value       = aws_iam_openid_connect_provider.github.arn
+  value       = local.github_oidc_provider_arn
 }
 
 output "ci_deploy_role_arn" {

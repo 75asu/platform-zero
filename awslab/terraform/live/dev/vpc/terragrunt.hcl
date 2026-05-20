@@ -22,7 +22,11 @@ inputs = {
   enable_nat_gateway = false
   single_nat_gateway = true
 
-  # Flow logs: disabled in Ministack (no CloudWatch Logs support).
+  # Flow logs: disabled in lab (Floci does support CloudWatch Logs but not flow log delivery).
   # In real AWS: enable_flow_logs = true, cloudwatch_log_group_name = "/aws/vpc/platform-zero-dev"
   enable_flow_logs = false
+
+  # Floci doesn't auto-create a default SG when creating a VPC.
+  # In real AWS: remove this line (default = true) to lock down the default SG.
+  lockdown_default_sg = false
 }

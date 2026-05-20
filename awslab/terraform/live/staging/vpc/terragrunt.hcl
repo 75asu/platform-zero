@@ -23,7 +23,11 @@ inputs = {
   enable_nat_gateway = false
   single_nat_gateway = true
 
-  # Flow logs disabled for Ministack (no real CloudWatch billing concern).
+  # Flow logs disabled in lab.
   # In real AWS: enable for staging to catch anomalous traffic patterns.
   enable_flow_logs = false
+
+  # Floci doesn't auto-create a default SG when creating a VPC.
+  # In real AWS: remove this line (default = true) to lock down the default SG.
+  lockdown_default_sg = false
 }

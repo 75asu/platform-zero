@@ -68,6 +68,12 @@ variable "enable_dns_support" {
   default     = true
 }
 
+variable "lockdown_default_sg" {
+  description = "Manage the VPC default security group to revoke its allow-all rules. Set false when the emulator doesn't auto-create a default SG (e.g. Floci lab)."
+  type        = bool
+  default     = true
+}
+
 variable "enable_flow_logs" {
   description = "Enable VPC flow logs to CloudWatch. Requires cloudwatch_log_group_name."
   type        = bool

@@ -1,3 +1,10 @@
+# Excluded from `terragrunt run --all` — WAFv2 not supported by Floci.
+# Apply manually if needed. In real AWS: remove this exclude block.
+exclude {
+  if      = true
+  actions = ["all"]
+}
+
 include "root" {
   path = find_in_parent_folders("root.hcl")
 }

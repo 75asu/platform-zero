@@ -9,14 +9,21 @@ ifneq (,$(wildcard ../.env))
 endif
 
 # AWS / Terraform env — inherited by every recipe line, no need to source env.sh
-export AWS_ENDPOINT_URL     = http://$(TARGET_HOST):4566
-export AWS_DEFAULT_REGION   = us-east-1
-export AWS_ACCESS_KEY_ID    = test
+export AWS_ENDPOINT_URL      = http://$(TARGET_HOST):4566
+export AWS_DEFAULT_REGION    = us-east-1
+export AWS_ACCESS_KEY_ID     = test
 export AWS_SECRET_ACCESS_KEY = test
-export AWS_PAGER            =
-export MINIO_ENDPOINT_URL   = http://$(TARGET_HOST):9000
+export AWS_PAGER             =
+export MINIO_ENDPOINT_URL    = http://$(TARGET_HOST):9000
 
-.PHONY: up down deploy teardown tf-dev tf-staging tf-all clean tf-elasticache
+# Shared provider cache — one download per version, shared across all modules.
+# Eliminates the parallel-download race and the 400 MB spike on every make clean.
+export TF_PLUGIN_CACHE_DIR                          = $(HOME)/.terraform.d/plugin-cache
+# Allow the shared cache to be used even if it can't match the lock file exactly
+# (darwin/arm64 hardlink race when parallelism > 1 was causing mismatch errors).
+export TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE = true
+
+.PHONY: up down deploy teardown tf-dev tf-staging tf-all clean
 
 ## Full stack up: start containers + apply all environments
 deploy: up tf-all
@@ -58,22 +65,15 @@ down: _check-env _generate-inventory
 
 ## Apply dev environment (all modules under live/dev/)
 tf-dev: _check-env
-	cd terraform/live/dev && TG_NON_INTERACTIVE=true terragrunt run --all -- apply -auto-approve
+	cd terraform/live/dev && TG_NON_INTERACTIVE=true terragrunt run --all --parallelism 1 -- apply -auto-approve
 
 ## Apply staging environment (all modules under live/staging/)
 tf-staging: _check-env
-	cd terraform/live/staging && TG_NON_INTERACTIVE=true terragrunt run --all -- apply -auto-approve
+	cd terraform/live/staging && TG_NON_INTERACTIVE=true terragrunt run --all --parallelism 1 -- apply -auto-approve
 
-## Apply all environments (elasticache excluded by default — Ministack Go SDK limitation)
+## Apply all environments (waf + cloudfront excluded — not supported by Ministack)
 tf-all: _check-env
-	cd terraform/live && TG_NON_INTERACTIVE=true terragrunt run --all -- apply -auto-approve
-
-## Apply ElastiCache only — separate from tf-all due to Ministack Go SDK compatibility.
-## The Terraform AWS provider cannot poll for ElastiCache cluster status in Ministack.
-## The module code is correct and works in real AWS.
-tf-elasticache: _check-env
-	cd terraform/live/dev/elasticache && TG_NON_INTERACTIVE=true terragrunt apply -auto-approve || true
-	cd terraform/live/staging/elasticache && TG_NON_INTERACTIVE=true terragrunt apply -auto-approve || true
+	cd terraform/live && TG_NON_INTERACTIVE=true terragrunt run --all --parallelism 1 -- apply -auto-approve
 
 ## Delete all Terragrunt module caches — run after editing module source files
 clean:

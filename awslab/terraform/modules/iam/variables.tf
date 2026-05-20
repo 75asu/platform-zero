@@ -43,6 +43,12 @@ variable "enable_permission_boundary" {
   default     = true
 }
 
+variable "create_oidc_provider" {
+  description = "Create the GitHub OIDC provider. Set false when the emulator doesn't support CreateOpenIDConnectProvider (e.g. Floci lab)."
+  type        = bool
+  default     = true
+}
+
 variable "cross_account_trusted_account_id" {
   description = "AWS account ID allowed to assume the cross-account role. Empty string disables the role."
   type        = string

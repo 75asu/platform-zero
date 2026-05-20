@@ -20,7 +20,13 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      # ~> 5.99.1: provider 5.99.1 ignores InvalidAction on DescribeCapacityReservation
+      # (PR #42812), which is what Ministack returns for that ALB call.
+      # Upper bound < 5.100: provider 5.100+ switched CloudWatch to CBOR binary
+      # encoding; Ministack v1.3.43 speaks JSON only → DescribeAlarms fails.
+      # Ministack implements DescribeListenerAttributes natively (since v1.2.8).
+      # Real AWS: remove both constraints.
+      version = "~> 5.99.1"
     }
   }
 }

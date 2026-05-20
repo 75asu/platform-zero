@@ -9,7 +9,7 @@ resource "aws_iam_role" "ci_deploy" {
         Sid    = "AllowGitHubOIDC"
         Effect = "Allow"
         Principal = {
-          Federated = aws_iam_openid_connect_provider.github.arn
+          Federated = local.github_oidc_provider_arn
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {

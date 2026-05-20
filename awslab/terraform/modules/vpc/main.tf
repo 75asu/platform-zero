@@ -189,6 +189,7 @@ resource "aws_route_table_association" "data" {
 # Every resource should use an explicit, minimal SG instead.
 
 resource "aws_default_security_group" "default" {
+  count  = var.lockdown_default_sg ? 1 : 0
   vpc_id = aws_vpc.this.id
 
   tags = merge(local.common_tags, {
