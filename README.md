@@ -1,10 +1,16 @@
 # platform-zero
 
-> Practice lab for building production-grade infrastructure from scratch.
-> The goal: go from nothing to a fully working platform using the same tools and patterns companies run at scale — no shortcuts, no managed services doing the hard parts for you.
+> There's enough here to keep you busy for a while.
+> Clone it. Break it. Rebuild it. Make it yours.
+> All you need is another machine to point it at.
 
-If platform-zero is running, everything in it was built by hand and is working correctly.
-If you want to practice what happens when it breaks, that's [sre-dojo](https://github.com/75asu/sre-dojo).
+This is a practice lab for infrastructure that actually runs — not diagrams, not tutorials, not "deploy to a managed service and call it done." Production patterns, real tools, a machine you control. The kind of setup you build once, break intentionally, and learn more from than any course.
+
+Fork it. Swap out a component. Add a module. Run the teardown at 2am and bring it back up before breakfast. That's the point.
+
+---
+
+> If platform-zero is running, everything in it was built by hand and is working correctly.
 
 ---
 
@@ -32,58 +38,25 @@ make down    # full teardown, machine is clean
 
 ### `awslab` — AWS Infrastructure
 
-Production-level AWS infrastructure built with Terraform and Terragrunt.
-Runs against Ministack on the homelab — same Terraform, same patterns, no cloud bill.
+17 production-pattern Terraform modules across dev and staging. Runs against Ministack on the homelab — same code it would use against real AWS, different endpoint.
 
 ```bash
 cd awslab
-make up      # start Ministack on homelab → ready for Terraform
-make down    # destroy all resources, homelab is clean
+make deploy  # start Ministack on homelab + apply all 17 modules
+make reset   # nuke everything and rebuild from scratch
+make verify  # smoke test: Ministack, MinIO, DynamoDB lock table
 ```
 
 | Layer | Stack |
 |-------|-------|
-| Fake AWS | Ministack (local AWS API emulator) |
-| IaC | Terraform modules + Terragrunt for multi-env |
-| Provisioned | VPC, IAM, S3, RDS (in progress) |
+| AWS emulator | Ministack (LocalStack-compatible, self-hosted) |
+| State | MinIO (S3-compatible, runs on homelab) |
+| IaC | Terraform + Terragrunt (multi-env, dependency graph) |
+| Provisioned | VPC, IAM, S3, KMS, SQS, RDS, EC2, ALB, ECS, Route53, WAF, CloudFront, ElastiCache, SSM, SNS, Lambda, Scheduler |
 
 ---
 
-## Architecture — k8slab
-
-```
-                        ┌─────────────────────────────────────────┐
-                        │              k3s cluster                 │
-                        │                                          │
-  git push ────────────▶│  Gitea  ◀──── ArgoCD (app-of-apps)      │
-                        │                      │                   │
-                        │              ┌───────┴────────┐          │
-                        │              │                │          │
-                        │           infra layer      apps layer    │
-                        │         Vault + ESO      monitoring      │
-                        │                          cloudflared     │
-                        │                          act-runner      │
-                        └─────────────────────────────────────────┘
-                                         │
-                        Cloudflare Tunnel │ (outbound only)
-                                         ▼
-                              *.yourdomain.com
-```
-
 **GitOps loop:** Every manifest change goes through `make push` → Gitea → ArgoCD reconciles. `kubectl apply` is never used after bootstrap.
-
-**Secret flow:**
-```
-.env → bootstrap → Vault KV v2
-                       │
-                   ESO ClusterSecretStore
-                       │
-               ExternalSecret (in Git)
-                       │
-               K8s Secret (in cluster, never in Git)
-                       │
-                   application
-```
 
 No secrets ever touch the Git repository.
 
@@ -123,12 +96,10 @@ make publish    # prompts for confirmation, then git push origin main
 
 | Phase | What gets built | Status |
 |-------|----------------|--------|
-| 1 — Ministack | Local AWS API on homelab via Ansible | done |
-| 2 — VPC | Subnets, route tables, security groups via Terraform | in progress |
-| 3 — IAM | Roles, policies, cross-account access | planned |
-| 4 — S3 + RDS | Object storage, managed PostgreSQL | planned |
-| 5 — Terragrunt | Multi-env wiring (dev/staging) | planned |
-| 6 — Pulumi | VPC scenario in Pulumi for comparison | planned |
+| 1 | Ministack + MinIO on homelab via Ansible, DynamoDB state lock | done |
+| 2 | VPC, IAM, S3, KMS — networking and identity foundation | done |
+| 3 | SQS, RDS, EC2, ALB, ECS, Route53, WAF, CloudFront | done |
+| 4 | ElastiCache, SSM, SNS, Lambda, EventBridge Scheduler | done |
 
 ---
 

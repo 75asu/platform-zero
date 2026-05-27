@@ -12,29 +12,6 @@ DNS layer: hosted zone, records, health checks, and query logging in one module.
 | `aws_route53_record` | DNS records — A, CNAME, and alias records via for_each map |
 | `aws_route53_health_check` | Endpoint health monitoring from Route53's global fleet |
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│  Route53 Hosted Zone                                │
-│  binarysquad.org                                    │
-│                                                      │
-│  ┌──────────────────┐  ┌──────────────────────────┐ │
-│  │  Records          │  │  Health Checks            │ │
-│  │  www → CNAME ALB   │  │  app → HTTPS :443 /health │ │
-│  │  api → Alias ALB   │  │  └─ failure_threshold=3  │ │
-│  │  @   → A 1.2.3.4   │  │  └─ request_interval=30  │ │
-│  └──────────────────┘  └──────────────────────────┘ │
-│           │                        │                 │
-│           ▼                        ▼                 │
-│  ┌──────────────────────────────────────────────┐   │
-│  │  Query Logging → CloudWatch Logs             │   │
-│  │  /aws/route53/binarysquad.org                 │   │
-│  │  retention: 30 days                           │   │
-│  └──────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────┘
-```
-
 ## Key concepts
 
 **Public vs private hosted zones**

@@ -48,27 +48,6 @@ Set `rate_limit` to the maximum number of requests allowed per 5-minute window p
 **Default action**
 `allow` — all requests pass unless a rule blocks them. Use `block` only when you are certain the allow list and managed rules are complete (rare; causes false positives at launch).
 
-## Architecture
-
-```
-Request
-  │
-  ▼
-WAF web ACL
-  │
-  ├─ IP allow? → ALLOW (skip rest)
-  ├─ IP block? → BLOCK
-  ├─ Geo block? → BLOCK
-  ├─ Rate limit exceeded? → BLOCK
-  ├─ Known bad input? → BLOCK
-  ├─ Admin path? → BLOCK
-  ├─ OWASP match? → BLOCK
-  └─ Default: ALLOW
-  │
-  ▼
-ALB / CloudFront
-```
-
 ## Apply order
 
 ```

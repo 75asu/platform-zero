@@ -4,15 +4,20 @@
   gather_facts: false
 
   tasks:
-    - name: Stop and remove all containers
-      shell: docker compose down
+    - name: Stop containers and remove all volumes
+      # -v wipes named volumes (dex-config, netbird-config, netbird-data) so the
+      # next "make up" starts completely fresh — new Netbird enrollment, clean Dex DB.
+      # Ministack is in-memory; MinIO data is in the container writable layer.
+      # Both are gone on plain "down". -v covers the Netbird/Dex named volumes.
+      shell: docker compose down -v
       args:
         chdir: ~/awslab
       ignore_errors: true
 
     - name: Remove awslab working directory
       shell: sudo rm -rf ~/awslab
+      ignore_errors: true
 
     - name: Done
       debug:
-        msg: "All containers stopped. Homelab is clean."
+        msg: "All containers and volumes removed. Homelab is clean."

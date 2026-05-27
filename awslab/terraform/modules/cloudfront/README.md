@@ -35,23 +35,6 @@ CloudFront has edge locations worldwide. Price class controls which edges serve 
 **Custom error responses**
 Map HTTP error codes (e.g., 404) to S3 objects (e.g., `/404.html`). Useful for SPAs where the app router handles 404s — return `200` with `index.html` so the browser executes the JS bundle and lets the SPA render the correct error state.
 
-## Architecture
-
-```
-Browser
-  │
-  ▼
-CloudFront distribution
-  │                    │
-  │ /static/*          │ /*
-  ▼                    ▼
-S3 (OAC)            ALB (HTTP)
-  │                    │
-  │ SigV4 signed        │
-  ▼                    ▼
-S3 bucket           ECS service
-```
-
 ## Apply order
 
 ```

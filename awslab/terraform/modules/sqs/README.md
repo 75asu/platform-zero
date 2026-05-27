@@ -31,30 +31,6 @@ Standard queues: at-least-once delivery, best-effort ordering, up to 120,000 mes
 **Resource policy vs identity policy**
 The queue policy (`aws_sqs_queue_policy`) is a resource-based policy — it controls who can access the queue from the queue's side. IAM identity policies on roles/users control access from the principal's side. For internal queues in the same account, identity policies alone are sufficient — the queue policy is optional. For cross-account access, a queue resource policy is required.
 
-## Architecture
-
-```
-Producer (ECS task / Lambda / CI)
-    │
-    │  sqs:SendMessage
-    ▼
-┌─────────────────────────────────────┐
-│  platform-zero-{env}-orders         │  visibility_timeout: 30s
-│                                     │  long polling: 20s
-│  Consumer receives → processes      │
-│  If deleted: done ✓                 │
-│  If not deleted within 30s:         │
-│    → visible again (re-delivery)    │
-│  After 3 failures:                  │
-└──────────────┬──────────────────────┘
-               │ redrive (maxReceiveCount: 3)
-               ▼
-┌─────────────────────────────────────┐
-│  platform-zero-{env}-orders-dlq     │  retention: 14 days
-│                                     │  manual inspection / replay
-└─────────────────────────────────────┘
-```
-
 ## Apply order
 
 ```

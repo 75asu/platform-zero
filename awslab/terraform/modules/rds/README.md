@@ -35,29 +35,6 @@ RDS sets a default based on instance RAM (roughly `LEAST(DBInstanceClassMemory/9
 **Secrets Manager integration**
 Apps fetch connection details at startup with `GetSecretValue` — no hardcoded hosts or passwords. The secret JSON matches the standard RDS format recognised by RDS Proxy and most AWS SDK helpers. Grant `secretsmanager:GetSecretValue` on `secret_arn` to the ECS task role or Lambda execution role.
 
-## Architecture
-
-```
-ECS task / Lambda
-    │
-    │  secretsmanager:GetSecretValue
-    ▼
-┌──────────────────────────────────────────┐
-│  {project}/{env}/rds/credentials         │
-│  { username, password, host, port,       │
-│    dbname, engine }                      │
-└─────────────────┬────────────────────────┘
-                  │ parse + connect
-                  ▼
-┌──────────────────────────────────────────┐
-│  aws_db_instance  (Postgres 14)          │
-│  identifier: platform-zero-{env}         │
-│  parameter group: custom                 │
-│  backup: {retention} days                │
-│  multi_az: false (lab) / true (prod)     │
-└──────────────────────────────────────────┘
-```
-
 ## Apply order
 
 ```

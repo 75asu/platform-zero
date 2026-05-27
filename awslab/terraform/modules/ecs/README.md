@@ -51,45 +51,6 @@ Created explicitly with a 7-day retention policy. Without this, ECS auto-creates
 `deployment_minimum_healthy_percent = 50`: ECS stops half the old tasks, starts new ones, repeats. 50% is the default — safe for stateless services.
 `deployment_maximum_percent = 200`: ECS can temporarily run double the desired count during a deploy. Needs capacity — lower for EC2 clusters with tight headroom.
 
-## Architecture
-
-```
-Internet
-    │
-    ▼
-┌───────────────────┐  (create_alb = true, real AWS only)
-│  ALB :80          │
-│  aws_lb_listener  │
-└────────┬──────────┘
-         │ forward
-         ▼
-┌───────────────────┐
-│  Target Group     │
-│  target_type=ip   │  (awsvpc)
-│  target_type=inst │  (bridge)
-└────────┬──────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────┐
-│  ECS Cluster                                            │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │  ECS Service  (desired_count replicas)          │   │
-│  │  ┌──────────────────────────────────────────┐   │   │
-│  │  │  Task (container_image, cpu, memory)     │   │   │
-│  │  │  ├── execution_role → ECR pull, CW logs  │   │   │
-│  │  │  └── task_role → SQS, Secrets Manager    │   │   │
-│  │  └──────────────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-         │ logs
-         ▼
-┌───────────────────┐
-│  CloudWatch Logs  │
-│  /ecs/{name}      │
-│  retention: 7d    │
-└───────────────────┘
-```
-
 ## Apply order
 
 ```

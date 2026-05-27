@@ -41,35 +41,6 @@ Disabled by default for Ministack (`enable_nat_gateway = false`) — Ministack d
 **VPC flow logs**
 When `enable_flow_logs = true`, all accepted and rejected traffic is published to CloudWatch Logs. Use for security auditing, anomaly detection, and cost analysis of cross-AZ traffic. Disabled by default in lab (avoids CloudWatch costs). Enable in staging and prod.
 
-## Architecture
-
-```
-                    Internet
-                       │
-              ┌────────▼────────┐
-              │  Internet GW     │
-              └────────┬────────┘
-                       │
-        ┌──────────────┼──────────────┐
-        │              │              │
-   us-east-1a     us-east-1b     (add AZs)
-        │              │
-  ┌─────▼─────┐  ┌─────▼─────┐
-  │  public   │  │  public   │   10.x.1.0/24, 10.x.2.0/24
-  │  subnet   │  │  subnet   │   ALB, NAT GW
-  └─────┬─────┘  └─────┬─────┘
-        │ NAT           │ NAT
-  ┌─────▼─────┐  ┌─────▼─────┐
-  │  private  │  │  private  │   10.x.11.0/24, 10.x.12.0/24
-  │  subnet   │  │  subnet   │   ECS tasks, EC2
-  └─────┬─────┘  └─────┬─────┘
-        │ local         │ local
-  ┌─────▼─────┐  ┌─────▼─────┐
-  │   data    │  │   data    │   10.x.21.0/24, 10.x.22.0/24
-  │  subnet   │  │  subnet   │   RDS, ElastiCache
-  └───────────┘  └───────────┘
-```
-
 ## Apply order
 
 ```

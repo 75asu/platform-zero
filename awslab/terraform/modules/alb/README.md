@@ -40,35 +40,6 @@ When a task is replaced (rolling deploy or scale-in), the ALB keeps sending requ
 - Deletion protection (`enable_deletion_protection = true`)
 - WAF association via `waf` module's `alb_arn` input
 
-## Architecture
-
-```
-Internet
-  │  port 80
-  ▼
-┌──────────────────────────────────┐
-│  ALB SG (inbound 80/0.0.0.0/0)  │
-└──────────────────────────────────┘
-  │ forward
-  ▼
-┌──────────────────────────────────┐
-│  aws_lb (internet-facing)        │
-│  public subnets, 2+ AZs          │
-└──────────────────────────────────┘
-  │ health check + routing
-  ▼
-┌──────────────────────────────────┐
-│  Target Group (IP type)          │
-│  health_check_path: /            │
-└──────────────────────────────────┘
-  │ register IPs
-  ▼
-┌──────────────────────────────────┐
-│  ECS SG (ingress from ALB SG)    │
-│  ECS tasks in private subnets    │
-└──────────────────────────────────┘
-```
-
 ## Apply order
 
 ```

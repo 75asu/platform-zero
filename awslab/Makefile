@@ -8,7 +8,9 @@ ifneq (,$(wildcard ../.env))
   export
 endif
 
-# AWS / Terraform env — inherited by every recipe line, no need to source env.sh
+# ── AWS / Terraform env ────────────────────────────────────────────────────────
+# These are exported to every recipe line. Source env.sh in your shell to get
+# the same variables for ad-hoc aws CLI calls outside of Make.
 export AWS_ENDPOINT_URL      = http://$(TARGET_HOST):4566
 export AWS_DEFAULT_REGION    = us-east-1
 export AWS_ACCESS_KEY_ID     = test
@@ -19,25 +21,34 @@ export MINIO_ENDPOINT_URL    = http://$(TARGET_HOST):9000
 # Shared provider cache — one download per version, shared across all modules.
 # Eliminates the parallel-download race and the 400 MB spike on every make clean.
 export TF_PLUGIN_CACHE_DIR                          = $(HOME)/.terraform.d/plugin-cache
-# Allow the shared cache to be used even if it can't match the lock file exactly
-# (darwin/arm64 hardlink race when parallelism > 1 was causing mismatch errors).
+# Allow the shared cache even if it can't match the lock file exactly.
+# darwin/arm64 hardlink race when parallelism > 1 causes mismatch errors.
 export TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE = true
 
-.PHONY: up down deploy teardown tf-dev tf-staging tf-all clean
+.PHONY: up down deploy teardown reset verify tf-dev tf-staging tf-all clean \
+        _check-env _generate-inventory
 
-## Full stack up: start containers + apply all environments
+# ── Primary targets ────────────────────────────────────────────────────────────
+
+## Full stack up: start Ministack + MinIO on homelab, then apply all Terraform modules
 deploy: up tf-all
 
-## Full stack down: stop containers
-## Ministack is in-memory and MinIO data lives in the container layer,
-## so docker compose down wipes everything — no terraform destroy needed.
+## Full stack down: stop all containers and remove all volumes
 teardown: down
 
-## Start Ministack + MinIO on homelab, then create the DynamoDB lock table
+## Wipe everything and rebuild from scratch.
+## Equivalent to: teardown + clean + deploy
+## Run this after pulling changes that add new modules or alter the backend.
+reset: teardown clean deploy
+
+# ── Stack lifecycle ────────────────────────────────────────────────────────────
+
+## Start Ministack + MinIO on homelab via Ansible, then bootstrap state infrastructure
 up: _check-env _generate-inventory
+	@mkdir -p $(HOME)/.terraform.d/plugin-cache
 	echo ">>> Starting awslab..."
 	(cd $(ANSIBLE_DIR) && ansible-playbook provision.yaml)
-	echo ">>> Creating DynamoDB state lock table..."
+	echo ">>> Bootstrapping state infrastructure..."
 	aws dynamodb create-table \
 	  --table-name platform-zero-tfstate-lock \
 	  --attribute-definitions AttributeName=LockID,AttributeType=S \
@@ -50,38 +61,58 @@ up: _check-env _generate-inventory
 	echo "  MinIO     : http://$(TARGET_HOST):9000"
 	echo "  MinIO UI  : http://$(TARGET_HOST):9001  (user: minioadmin / minioadmin)"
 	echo ""
-	echo "  To configure your shell:"
-	echo "    source awslab/env.sh"
-	echo ""
-	echo "  Quick test:"
-	echo "    aws s3 ls"
+	echo "  Run: make verify   — smoke test all services"
+	echo "  Run: make tf-all   — apply all Terraform modules"
+	echo "  Run: make deploy   — up + tf-all in one step"
 	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-## Stop all containers (Ministack + MinIO)
+## Stop all containers and volumes (Ministack, MinIO, Netbird, Dex)
 down: _check-env _generate-inventory
 	echo ">>> Tearing down awslab..."
 	(cd $(ANSIBLE_DIR) && ansible-playbook teardown.yaml)
 	echo "Done."
 
-## Apply dev environment (all modules under live/dev/)
+# ── Smoke test ─────────────────────────────────────────────────────────────────
+
+## Verify Ministack, MinIO state bucket, and DynamoDB lock table are all reachable
+verify: _check-env
+	@echo "Checking Ministack..."
+	@aws sts get-caller-identity > /dev/null 2>&1 && echo "  Ministack  OK" || (echo "  Ministack  FAIL"; exit 1)
+	@echo "Checking MinIO state bucket..."
+	@AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
+	  aws --endpoint-url=http://$(TARGET_HOST):9000 s3 ls s3://platform-zero-tfstate > /dev/null 2>&1 \
+	  && echo "  MinIO      OK" || (echo "  MinIO      FAIL (run: make up)"; exit 1)
+	@echo "Checking DynamoDB lock table..."
+	@aws dynamodb describe-table --table-name platform-zero-tfstate-lock > /dev/null 2>&1 \
+	  && echo "  DynamoDB   OK" || (echo "  DynamoDB   FAIL (run: make up)"; exit 1)
+	@echo ""
+	@echo "All services reachable. Ready for: make tf-all"
+
+# ── Terraform ─────────────────────────────────────────────────────────────────
+
+## Apply dev environment only (all modules under live/dev/)
 tf-dev: _check-env
 	cd terraform/live/dev && TG_NON_INTERACTIVE=true terragrunt run --all --parallelism 1 -- apply -auto-approve
 
-## Apply staging environment (all modules under live/staging/)
+## Apply staging environment only (all modules under live/staging/)
 tf-staging: _check-env
 	cd terraform/live/staging && TG_NON_INTERACTIVE=true terragrunt run --all --parallelism 1 -- apply -auto-approve
 
-## Apply all environments (waf + cloudfront excluded — not supported by Ministack)
+## Apply all environments (dev + staging) in dependency order
 tf-all: _check-env
 	cd terraform/live && TG_NON_INTERACTIVE=true terragrunt run --all --parallelism 1 -- apply -auto-approve
 
-## Delete all Terragrunt module caches — run after editing module source files
+# ── Cache management ───────────────────────────────────────────────────────────
+
+## Delete Terragrunt module caches and generated Lambda zips.
+## Run after editing module source files, or before make reset.
 clean:
 	find terraform -name ".terragrunt-cache" -type d -exec rm -rf {} + 2>/dev/null || true
 	find terraform -name ".terraform.lock.hcl" -not -path "*/modules/*" -delete 2>/dev/null || true
+	find terraform/modules/lambda/handlers -name "*.zip" -delete 2>/dev/null || true
 	echo "Cache cleared."
 
-## ── Internal targets ─────────────────────────────────────────────────────────
+# ── Internal ───────────────────────────────────────────────────────────────────
 
 _check-env:
 	@missing=(); \
@@ -90,7 +121,7 @@ _check-env:
 	done; \
 	if [[ $${#missing[@]} -gt 0 ]]; then \
 	  echo "ERROR: missing required variables: $${missing[*]}"; \
-	  echo "Copy .env.example to .env and fill in the values."; \
+	  echo "Copy .env.example to ../.env and fill in the values."; \
 	  exit 1; \
 	fi
 
