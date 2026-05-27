@@ -8,7 +8,7 @@
   <meta property="og:site_name" content="platform-zero" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="platform-zero — From Blank Machine to Full Platform" />
-  <meta property="og:description" content="A self-contained open source infra lab. Terragrunt, Ministack, Ansible, Kubernetes — 22 Terraform units across dev and staging. One command: make deploy." />
+  <meta property="og:description" content="A self-contained open source infra lab. Terragrunt, Ansible, Kubernetes — 34 Terraform units across AWS + GCP, dev and staging. One command: make deploy." />
   <meta property="og:url" content="https://75asu.github.io/platform-zero/" />
   <meta property="og:image" content="https://75asu.github.io/platform-zero/og.png" />
   <meta property="og:image:width" content="1200" />
@@ -16,7 +16,7 @@
   <meta property="og:locale" content="en_US" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="platform-zero — From Blank Machine to Full Platform" />
-  <meta name="twitter:description" content="A self-contained open source infra lab. Terragrunt, Ministack, Ansible, Kubernetes — 22 Terraform units across dev and staging. One command: make deploy." />
+  <meta name="twitter:description" content="A self-contained open source infra lab. Terragrunt, Ansible, Kubernetes — 34 Terraform units across AWS + GCP, dev and staging. One command: make deploy." />
   <meta name="twitter:image" content="https://75asu.github.io/platform-zero/og.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -507,9 +507,9 @@
         <div class="lab-card">
           <div class="lab-card-top">
             <span class="lab-name">gcplab</span>
-            <span class="badge badge-planned">planned</span>
+            <span class="badge badge-live">live</span>
           </div>
-          <p class="lab-desc">GCP infrastructure - mirror of awslab for Google Cloud. Terraform + Terragrunt against local GCP emulators.</p>
+          <p class="lab-desc">GCP infrastructure - 6 modules (IAM, GCS, Pub/Sub, Cloud SQL, Secret Manager, BigQuery) across dev + staging. Terraform + Terragrunt against MiniSky emulator via nginx proxy.</p>
         </div>
         <div class="lab-card">
           <div class="lab-card-top">

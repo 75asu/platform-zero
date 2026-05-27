@@ -1,0 +1,18 @@
+# ── Local config ──────────────────────────────────────────────────────────────
+*.local
+.env
+
+# ── Ansible ───────────────────────────────────────────────────────────────────
+ansible/inventory/hosts.yaml
+
+# ── Terraform / Terragrunt ────────────────────────────────────────────────────
+.terragrunt-cache/
+.terraform/
+terraform/live/**/.terraform.lock.hcl
+
+# ── Editor / OS ───────────────────────────────────────────────────────────────
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/

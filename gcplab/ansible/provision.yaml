@@ -29,6 +29,11 @@
         src: ../Dockerfile
         dest: "{{ gcplab_dir }}/Dockerfile"
 
+    - name: Copy nginx.conf
+      copy:
+        src: ../nginx.conf
+        dest: "{{ gcplab_dir }}/nginx.conf"
+
     # ── Build MiniSky image on the homelab ─────────────────────────────────────
 
     - name: Build MiniSky Docker image
@@ -72,6 +77,35 @@
         - fail:
             msg: "minio-init failed. Check MinIO logs above."
 
+    # ── Start nginx proxy ───────────────────────────────────────────────────────
+    # nginx rewrites Host headers per port so MiniSky sees the correct GCP domain.
+    # No /etc/hosts overrides or iptables rules needed on the local machine.
+
+    - name: Start minisky-proxy (nginx)
+      shell: docker compose up -d minisky-proxy
+      args:
+        chdir: "{{ gcplab_dir }}"
+
+    - name: Reload nginx config (picks up changes on re-runs without downtime)
+      shell: docker compose exec -T minisky-proxy nginx -s reload
+      args:
+        chdir: "{{ gcplab_dir }}"
+      ignore_errors: true  # container may not be ready yet on first run; wait_for below catches that
+
+    - name: Wait for nginx proxy port (storage, 8090) to be open
+      wait_for:
+        host: localhost
+        port: 8090
+        timeout: 30
+        state: started
+
+    - name: Wait for nginx proxy port (bigquery, 8099) to be open
+      wait_for:
+        host: localhost
+        port: 8099
+        timeout: 30
+        state: started
+
     - name: Ready
       debug:
         msg:
@@ -79,4 +113,4 @@
           - "MiniSky UI.       → http://{{ ansible_host }}:8083"
           - "MinIO is up.      → http://{{ ansible_host }}:9002"
           - "MinIO console.    → http://{{ ansible_host }}:9003"
-          - "Run on your local machine: source gcplab/env.sh"
+          - "Proxy ports:        8090-8099 (storage/iam/pubsub/container/bigquery/...)"

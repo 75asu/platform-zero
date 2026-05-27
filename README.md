@@ -54,6 +54,24 @@ make verify  # smoke test: Ministack, MinIO, DynamoDB lock table
 | IaC | Terraform + Terragrunt (multi-env, dependency graph) |
 | Provisioned | VPC, IAM, S3, KMS, SQS, RDS, EC2, ALB, ECS, Route53, WAF, CloudFront, ElastiCache, SSM, SNS, Lambda, Scheduler |
 
+### `gcplab` — GCP Infrastructure
+
+7 production-pattern Terraform modules across dev and staging. Runs against MiniSky on the homelab — same code it would use against real GCP, different endpoint.
+
+```bash
+cd gcplab
+make deploy  # build MiniSky image + start on homelab + apply all 7 modules
+make reset   # nuke everything and rebuild from scratch
+make verify  # smoke test: MiniSky health, MinIO state bucket
+```
+
+| Layer | Stack |
+|-------|-------|
+| GCP emulator | MiniSky (GCP API-compatible, self-hosted) |
+| State | MinIO (S3-compatible, port 9002 — separate from awslab) |
+| IaC | Terraform + Terragrunt (multi-env, dependency graph) |
+| Provisioned | IAM, Cloud Storage, Pub/Sub, Cloud SQL, Artifact Registry, Secret Manager, Cloud Run |
+
 ---
 
 **GitOps loop:** Every manifest change goes through `make push` → Gitea → ArgoCD reconciles. `kubectl apply` is never used after bootstrap.

@@ -4,22 +4,38 @@
   gather_facts: false
 
   tasks:
-    - name: Stop MiniSky
-      command: minisky stop
-      ignore_errors: true
-      changed_when: false
-
-    - name: Stop and remove MinIO containers
-      shell: docker compose down
+    - name: Stop gcplab compose stack and remove declared volumes
+      # -v removes the minisky-data named volume.
+      shell: docker compose down -v
       args:
         chdir: ~/gcplab
       ignore_errors: true
 
+    # MiniSky spawns its own Docker containers and volumes on the host for
+    # GCS (fake-gcs-server), Pub/Sub (gcloud emulator), and Cloud SQL (postgres).
+    # These are not declared in the compose file so docker compose down -v
+    # does not touch them. Clean them up explicitly.
+
+    - name: Stop and remove MiniSky-spawned containers
+      shell: |
+        containers=$(docker ps -a --filter "name=minisky-" -q)
+        if [ -n "$containers" ]; then
+          docker rm -f $containers
+        fi
+      ignore_errors: true
+
+    - name: Remove MiniSky-spawned volumes
+      shell: |
+        volumes=$(docker volume ls --filter "name=minisky-" -q)
+        if [ -n "$volumes" ]; then
+          docker volume rm $volumes
+        fi
+      ignore_errors: true
+
     - name: Remove gcplab working directory
-      file:
-        path: ~/gcplab
-        state: absent
+      shell: rm -rf ~/gcplab
+      ignore_errors: true
 
     - name: Done
       debug:
-        msg: "MiniSky stopped. All containers removed. Homelab is clean."
+        msg: "All containers, volumes, and MiniSky-spawned resources removed. Homelab is clean."

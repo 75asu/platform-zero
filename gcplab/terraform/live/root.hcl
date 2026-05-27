@@ -3,14 +3,15 @@ locals {
 
   environment    = local.project_vars.locals.environment
   gcp_project    = local.project_vars.locals.gcp_project
-  minisky_endpoint = local.project_vars.locals.minisky_endpoint
 
-  minio_endpoint = get_env("MINIO_ENDPOINT_URL", "http://localhost:9002")
+  minio_endpoint  = get_env("MINIO_ENDPOINT_URL", "http://localhost:9002")
+
+  # nginx reverse proxy rewrites Host headers per port so MiniSky sees
+  # the correct GCP domain — same pattern as awslab pointing at Ministack.
+  proxy_host = get_env("TARGET_HOST", "localhost")
 }
 
 # Generates provider.tf in every module's working directory.
-# MiniSky uses the official google provider with per-service endpoint overrides.
-# GOOGLE_OAUTH_ACCESS_TOKEN is set in env.sh — provider picks it up automatically.
 generate "provider" {
   path      = "provider.tf"
   if_exists = "overwrite_terragrunt"
@@ -29,21 +30,25 @@ provider "google" {
   project = "${local.gcp_project}"
   region  = "us-central1"
 
-  # MiniSky: override each service endpoint to the local emulator.
-  # Add more overrides here as modules are built for those services.
-  storage_custom_endpoint        = "${local.minisky_endpoint}/storage/v1/"
-  compute_custom_endpoint        = "${local.minisky_endpoint}/compute/v1/"
-  pubsub_custom_endpoint         = "${local.minisky_endpoint}/"
-  bigquery_custom_endpoint       = "${local.minisky_endpoint}/bigquery/v2/"
-  cloud_run_v2_custom_endpoint   = "${local.minisky_endpoint}/v2/"
-  firestore_custom_endpoint      = "${local.minisky_endpoint}/"
+  # nginx proxy (gcplab-minisky-proxy) listens on per-service ports and
+  # rewrites the Host header before forwarding to MiniSky on 8082.
+  # No /etc/hosts overrides or iptables rules needed on the local machine.
+  storage_custom_endpoint           = "http://${local.proxy_host}:8090/storage/v1/"
+  iam_custom_endpoint               = "http://${local.proxy_host}:8091/"
+  pubsub_custom_endpoint            = "http://${local.proxy_host}:8093/"
+  secret_manager_custom_endpoint    = "http://${local.proxy_host}:8094/"
+  sql_custom_endpoint               = "http://${local.proxy_host}:8095/"
+  artifact_registry_custom_endpoint = "http://${local.proxy_host}:8096/"
+  cloud_run_v2_custom_endpoint      = "http://${local.proxy_host}:8097/"
+  container_custom_endpoint         = "http://${local.proxy_host}:8098/"
+  big_query_custom_endpoint         = "http://${local.proxy_host}:8099/"
 }
 EOF
 }
 
 # State lives in MinIO (S3-compatible API).
-# No DynamoDB locking — MinIO doesn't support it.
-# In real GCP: switch to gcs backend with built-in object locking.
+# No DynamoDB locking — MinIO does not support it.
+# In real GCP: switch to gcs backend which has built-in object locking.
 remote_state {
   backend = "s3"
 
@@ -63,8 +68,9 @@ remote_state {
     endpoint         = local.minio_endpoint
     force_path_style = true
 
-    skip_credentials_validation = true
-    skip_metadata_api_check     = true
-    skip_region_validation      = true
+    skip_credentials_validation  = true
+    skip_metadata_api_check      = true
+    skip_region_validation       = true
+    skip_requesting_account_id   = true
   }
 }
