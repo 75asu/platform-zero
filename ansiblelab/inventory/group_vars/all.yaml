@@ -1,0 +1,7 @@
+---
+# ansiblelab fleet configuration (declarative). Override count at run time with:
+#   make fleet FLEET=50
+fleet_image:    "images:ubuntu/22.04" # distro image for fleet nodes
+fleet_prefix:   "node-"                # node-001, node-002, ...
+fleet_count:    10                     # how many nodes to converge to
+fleet_parallel: 16                     # concurrent `incus launch` workers at scale

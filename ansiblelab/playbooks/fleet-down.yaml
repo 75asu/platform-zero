@@ -1,0 +1,19 @@
+---
+# Delete just the lab containers (prefix-matched). Leaves Incus installed.
+#   make fleet-down
+- name: Tear down the container fleet
+  hosts: all
+  become: true
+  tasks:
+    - name: list lab containers
+      ansible.builtin.shell: "incus list -c n -f csv | grep '^{{ fleet_prefix }}' || true"
+      register: lab
+      changed_when: false
+
+    - name: delete each lab container (force)
+      ansible.builtin.command: "incus delete --force {{ item }}"
+      loop: "{{ lab.stdout_lines }}"
+      when: lab.stdout_lines | length > 0
+
+    - ansible.builtin.debug:
+        msg: "deleted {{ lab.stdout_lines | length }} lab container(s)."

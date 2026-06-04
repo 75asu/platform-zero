@@ -1,0 +1,54 @@
+---
+# Preflight: prove we can connect to the target PROPERLY before any real play.
+# Order: raw SSH reachability -> shell -> Python -> sudo (become) -> identity.
+# Each failure mode gives a specific, actionable message.
+#   Run via: make connect
+- name: Preflight connectivity check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: SSH reachable (no Python required)
+      ansible.builtin.wait_for_connection:
+        timeout: 30
+
+    - name: Shell works over SSH
+      ansible.builtin.raw: echo connected
+      changed_when: false
+
+    - name: Python interpreter usable
+      block:
+        - name: ping
+          ansible.builtin.ping:
+      rescue:
+        - name: Python missing
+          ansible.builtin.fail:
+            msg: >-
+              SSH works but Ansible cannot find a usable Python on the target.
+              Install python3 (Debian/Ubuntu: apt-get install -y python3;
+              Rocky: dnf install -y python3; Alpine: apk add python3) and re-run.
+
+    - name: Privilege escalation (sudo) works
+      become: true
+      block:
+        - name: whoami as root
+          ansible.builtin.command: id -un
+          register: become_who
+          changed_when: false
+      rescue:
+        - name: become failed
+          ansible.builtin.fail:
+            msg: >-
+              Connected, but 'become' (sudo) failed. Set BECOME_PASS in .env, or
+              enable passwordless sudo for this user on the target.
+
+    - name: Gather minimal facts
+      ansible.builtin.setup:
+        gather_subset: [min]
+
+    - name: Connection OK
+      ansible.builtin.debug:
+        msg: >-
+          OK  {{ ansible_user | default('(user from ssh_config)') }}@{{ ansible_host | default(inventory_hostname) }}
+          ->  {{ ansible_facts.distribution | default('?') }} {{ ansible_facts.distribution_version | default('') }},
+          python {{ ansible_facts.python_version | default('?') }},
+          sudo as {{ become_who.stdout | default('?') }}

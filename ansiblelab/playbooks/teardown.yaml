@@ -1,0 +1,67 @@
+---
+# Full wipe: remove ALL Incus instances, uninstall Incus, remove the repo, key,
+# and data dir. Leaves the VM as bare Ubuntu with no residue, ready for the next
+# project. Idempotent: safe to run even if Incus is already gone.
+#   make teardown
+- name: Wipe Incus and all lab residue
+  hosts: all
+  become: true
+  tasks:
+    - name: is incus present?
+      ansible.builtin.command: which incus
+      register: has_incus
+      changed_when: false
+      failed_when: false
+
+    - name: delete every Incus instance
+      ansible.builtin.shell: "incus list -c n -f csv | xargs -r -I{} incus delete --force {}"
+      when: has_incus.rc == 0
+      changed_when: true
+
+    - name: stop + disable the incus service
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop: [incus.service, incus.socket]
+      failed_when: false
+
+    - name: unmount any leftover storage-pool loop mounts (defensive)
+      ansible.builtin.shell: |
+        for m in $(mount | awk '/\/var\/lib\/incus\//{print $3}' | sort -r); do
+          umount "$m" 2>/dev/null || umount -l "$m" 2>/dev/null || true
+        done
+      changed_when: false
+
+    - name: kill any orphaned Incus dnsmasq + delete the managed bridge (no residue)
+      ansible.builtin.shell: |
+        pkill -f 'dnsmasq.*incusbr0' 2>/dev/null || true
+        ip link show incusbr0 >/dev/null 2>&1 && ip link delete incusbr0 || true
+      changed_when: false
+
+    - name: purge the incus packages
+      ansible.builtin.apt:
+        name:
+          - incus
+          - btrfs-progs
+        state: absent
+        purge: true
+        autoremove: true
+
+    - name: remove repo, key, and data dir (no residue)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/zabbly-incus-stable.sources
+        - /etc/apt/keyrings/zabbly.asc
+        - /var/lib/incus
+        - /etc/default/incus
+        - /etc/sysctl.d/99-incus-fleet.conf
+
+    - name: refresh apt cache after repo removal
+      ansible.builtin.apt:
+        update_cache: true
+
+    - ansible.builtin.debug:
+        msg: "Incus and all lab residue removed -- VM is bare Ubuntu again."

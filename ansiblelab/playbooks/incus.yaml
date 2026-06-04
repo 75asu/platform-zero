@@ -1,0 +1,7 @@
+---
+# Install + initialize Incus on the target. Idempotent.  make incus-setup
+- name: Provision Incus
+  hosts: all
+  become: true
+  roles:
+    - incus

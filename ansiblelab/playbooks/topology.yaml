@@ -1,0 +1,146 @@
+---
+# Provision the named, right-sized Gitea fleet as Incus containers.
+#
+# Two concepts in play:
+#   1. Pin launches to a cached "golden" base image (alias 'lab-base') so we
+#      never depend on a live external image registry at launch time. Bootstrap
+#      SSH via `incus exec` -- the orchestrator reaches into each fresh container
+#      to install sshd + authorize the lab key, then hands off to Ansible over
+#      SSH (the bastion pattern).
+#   2. Per-node cgroup limits (limits.cpu / limits.memory) right-size each role.
+#
+# Idempotent: golden alias only created if missing; nodes only launched if
+# absent; SSH bootstrap is grep-guarded so re-runs change nothing.
+#   make topology
+- name: Provision the Gitea fleet topology
+  hosts: all
+  become: true
+  vars:
+    base_alias: "lab-base"
+    base_source: "images:ubuntu/22.04"          # used only as a last resort (CDN)
+    base_backup_dir: "/opt/ansiblelab-images"           # outside /var/lib/incus -> survives teardown
+    base_backup_prefix: "/opt/ansiblelab-images/lab-base"  # export writes a split image:
+    base_backup_meta: "/opt/ansiblelab-images/lab-base"        #   <prefix>       (metadata)
+    base_backup_rootfs: "/opt/ansiblelab-images/lab-base.root" #   <prefix>.root  (rootfs)
+    # cpu = whole cores exposed (limits.cpu, integer). cpu_allowance = optional
+    # CPU-time cap as a % of those cores (limits.cpu.allowance) for sub-core
+    # sizing. memory = hard cgroup ceiling (limits.memory).
+    topology:
+      - { name: "db-01",    cpu: "1", memory: "1GiB"   }                       # PostgreSQL
+      - { name: "cache-01", cpu: "1", cpu_allowance: "50%", memory: "256MiB" } # Redis (~0.5 core)
+      - { name: "gitea-01", cpu: "1", memory: "512MiB" }                       # Gitea app
+  tasks:
+    - name: require the lab public key (passed by `make topology` from .env)
+      ansible.builtin.assert:
+        that:
+          - lab_ssh_pubkey is defined
+          - (lab_ssh_pubkey | trim | length) > 0
+        fail_msg: "lab_ssh_pubkey is empty -- run `make topology` so .env + the .pub key are loaded."
+
+    - name: ensure golden base image (alias + offline backup; CDN-independent)
+      ansible.builtin.shell: |
+        set -uo pipefail
+        changed=0
+        # Resolve the 'lab-base' alias: existing -> cached image -> offline backup -> CDN.
+        if ! incus image alias list -f csv | grep -q '^{{ base_alias }},'; then
+          fp=$(incus image list -f csv -c fd | awk -F, 'tolower($2) ~ /jammy|22.04/ {print $1; exit}')
+          if [ -n "$fp" ]; then
+            incus image alias create {{ base_alias }} "$fp"; echo "resolved base from cached image $fp"
+          elif [ -f '{{ base_backup_meta }}' ] && [ -f '{{ base_backup_rootfs }}' ]; then
+            incus image import '{{ base_backup_meta }}' '{{ base_backup_rootfs }}' --alias {{ base_alias }}; echo "resolved base from offline backup"
+          else
+            incus image copy {{ base_source }} local: --alias {{ base_alias }}; echo "resolved base from CDN ({{ base_source }})"
+          fi
+          changed=1
+        fi
+        # Keep an offline backup (split image: metadata + rootfs) so even a full
+        # teardown can rebuild without the CDN.
+        if [ ! -f '{{ base_backup_meta }}' ] || [ ! -f '{{ base_backup_rootfs }}' ]; then
+          mkdir -p '{{ base_backup_dir }}'
+          incus image export {{ base_alias }} '{{ base_backup_prefix }}'
+          echo "exported offline backup"
+          changed=1
+        fi
+        echo "CHANGED=$changed"
+      args:
+        executable: /bin/bash
+      register: base_img
+      changed_when: "'CHANGED=1' in base_img.stdout"
+
+    - name: list existing instances
+      ansible.builtin.command: incus list -c n -f csv
+      register: have
+      changed_when: false
+
+    - name: launch missing nodes from the golden base + per-node size
+      ansible.builtin.command:
+        argv: >-
+          {{ ['incus', 'launch', base_alias, item.name,
+              '-c', 'limits.cpu=' ~ item.cpu,
+              '-c', 'limits.memory=' ~ item.memory]
+             + (['-c', 'limits.cpu.allowance=' ~ item.cpu_allowance]
+                if item.cpu_allowance is defined else []) }}
+      loop: "{{ topology }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.cpu }}c{{ ' @' ~ item.cpu_allowance if item.cpu_allowance is defined else '' }} / {{ item.memory }})"
+      when: item.name not in have.stdout_lines
+
+    - name: bootstrap sshd + lab key on every node (idempotent; exec from orchestrator)
+      ansible.builtin.shell: |
+        set -uo pipefail
+        PUBKEY='{{ lab_ssh_pubkey }}'   # has spaces; keep it a var, never embed in inner scripts
+        changed=0; failed=0
+        for n in {{ topology | map(attribute='name') | join(' ') }}; do
+          # already bootstrapped? sshd installed + active AND the exact key present
+          if incus exec "$n" -- sh -c '[ -x /usr/sbin/sshd ] && systemctl is-active --quiet ssh' \
+             && incus exec "$n" -- grep -qsxF -- "$PUBKEY" /root/.ssh/authorized_keys; then
+            continue
+          fi
+          # install sshd (incusbr0 is IPv4-only -> force apt to IPv4; CDN AAAA would hang),
+          # then inject the key over stdin (tee, overwrite) so quoting/spaces cannot corrupt it.
+          if incus exec "$n" -- bash -c '
+                set -e
+                export DEBIAN_FRONTEND=noninteractive
+                APT="apt-get -o Acquire::ForceIPv4=true"
+                for i in $(seq 1 30); do $APT update -qq && break || sleep 3; done
+                $APT install -y -qq openssh-server
+                install -d -m 700 /root/.ssh
+                sed -i "s/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/" /etc/ssh/sshd_config
+                systemctl enable --now ssh
+             ' \
+             && printf '%s\n' "$PUBKEY" | incus exec "$n" -- tee /root/.ssh/authorized_keys >/dev/null \
+             && incus exec "$n" -- chmod 600 /root/.ssh/authorized_keys; then
+            changed=1; echo "bootstrapped $n"
+          else
+            failed=1; echo "FAILED to bootstrap $n"
+          fi
+        done
+        echo "CHANGED=$changed"
+        [ "$failed" -eq 0 ]   # fail the task if any node failed (no more silent success)
+      args:
+        executable: /bin/bash
+      register: bootstrap
+      changed_when: "'CHANGED=1' in bootstrap.stdout"
+
+    - name: ensure fleet nodes autostart on VM boot (idempotent)
+      ansible.builtin.shell: |
+        set -uo pipefail
+        changed=0
+        for n in {{ topology | map(attribute='name') | join(' ') }}; do
+          if [ "$(incus config get "$n" boot.autostart 2>/dev/null)" != "true" ]; then
+            incus config set "$n" boot.autostart true; changed=1
+          fi
+        done
+        echo "CHANGED=$changed"
+      args:
+        executable: /bin/bash
+      register: autostart
+      changed_when: "'CHANGED=1' in autostart.stdout"
+
+    - name: show the topology (name / state / ipv4)
+      ansible.builtin.shell: incus list -c ns4 -f compact
+      register: topo
+      changed_when: false
+
+    - ansible.builtin.debug:
+        msg: "{{ (bootstrap.stdout_lines | reject('match', 'CHANGED=.*') | list) + ['----'] + topo.stdout_lines }}"

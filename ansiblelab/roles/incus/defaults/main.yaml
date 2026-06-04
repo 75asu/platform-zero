@@ -1,0 +1,16 @@
+---
+# Zabbly Incus repo channel: stable | lts
+incus_channel: stable
+
+# incusbr0 bridge subnet. `incus admin init --minimal` picks a random /24
+# (~253 DHCP leases). We override it to a /16 so the fleet network never runs
+# out of addresses (~65k leases) -- RAM, not IPs, becomes the ceiling.
+incus_bridge_cidr: "10.176.0.1/16"
+
+# Storage backend. The `--minimal` default is `dir`, which copies the FULL
+# rootfs per container (~650 MB each) -- 200 GB disk caps you at ~300 nodes and
+# launches are IO-bound. `btrfs` is copy-on-write: containers share the base
+# image and store only their delta (a few MB), so 1000+ nodes fit and launches
+# are near-instant snapshots. Pool lives in a loopback file sized below.
+incus_storage_driver: btrfs
+incus_storage_size: "180GiB"

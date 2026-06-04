@@ -1,0 +1,45 @@
+---
+# Converge the fleet to fleet_count containers. Idempotent: only launches the
+# ones that don't already exist.  make fleet FLEET=50
+- name: Spin up the container fleet
+  hosts: all
+  become: true
+  tasks:
+    - name: list existing instances
+      ansible.builtin.command: incus list -c n -f csv
+      register: have
+      changed_when: false
+
+    - name: launch missing nodes (parallel, idempotent)
+      ansible.builtin.shell: |
+        set -uo pipefail
+        have="$(incus list -c n -f csv)"
+        missing="$(for i in $(seq 1 {{ fleet_count | int }}); do
+                     n="$(printf '{{ fleet_prefix }}%03d' "$i")"
+                     grep -qxF "$n" <<<"$have" || printf '%s\n' "$n"
+                   done)"
+        count="$(printf '%s' "$missing" | grep -c . || true)"
+        echo "to_launch=$count"
+        if [ "$count" -gt 0 ]; then
+          printf '%s\n' "$missing" | grep . | \
+            xargs -r -P {{ fleet_parallel }} -I{} incus launch {{ fleet_image }} {}
+        fi
+      args:
+        executable: /bin/bash
+      register: launch
+      changed_when: "'to_launch=0' not in launch.stdout"
+
+    - name: report fleet size + host pressure
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo "containers : $(incus list -c n -f csv | grep -c .)  (running: $(incus list -c s -f csv | grep -ic running))"
+        echo "with IPv4  : $(incus list -c 4 -f csv | grep -c '[0-9]')"
+        free -m | awk '/Mem/{printf "memory     : used %d MB / avail %d MB / total %d MB\n",$3,$7,$2}'
+        echo "load avg   :$(uptime | sed 's/.*load average://')"
+        echo "cpu cores  : $(nproc)"
+      args:
+        executable: /bin/bash
+      register: pressure
+      changed_when: false
+    - ansible.builtin.debug:
+        msg: "{{ pressure.stdout_lines }}"

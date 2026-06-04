@@ -1,0 +1,123 @@
+---
+# Install + initialize Incus from the Zabbly repo. Idempotent.
+- name: apt keyrings dir exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Zabbly signing key present
+  ansible.builtin.get_url:
+    url: https://pkgs.zabbly.com/key.asc
+    dest: /etc/apt/keyrings/zabbly.asc
+    mode: "0644"
+
+- name: Zabbly Incus repo configured
+  ansible.builtin.copy:
+    dest: "/etc/apt/sources.list.d/zabbly-incus-{{ incus_channel }}.sources"
+    mode: "0644"
+    content: |
+      Enabled: yes
+      Types: deb
+      URIs: https://pkgs.zabbly.com/incus/{{ incus_channel }}
+      Suites: {{ ansible_distribution_release }}
+      Components: main
+      Architectures: {{ 'amd64' if ansible_architecture == 'x86_64' else ansible_architecture }}
+      Signed-By: /etc/apt/keyrings/zabbly.asc
+  register: incus_repo
+
+- name: apt cache refreshed (only when repo changed)
+  ansible.builtin.apt:
+    update_cache: true
+  when: incus_repo.changed
+
+- name: incus + btrfs tools installed
+  ansible.builtin.apt:
+    name:
+      - incus
+      - btrfs-progs   # required for the copy-on-write storage pool
+    state: present
+
+- name: operator user is in the incus-admin group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: incus-admin
+    append: true
+
+- name: check whether Incus is already initialized
+  ansible.builtin.command: incus storage show default
+  register: incus_pool
+  changed_when: false
+  failed_when: false
+
+- name: initialize Incus from preseed (CoW pool + /16 bridge) if not already
+  ansible.builtin.shell: |
+    incus admin init --preseed <<'PRESEED'
+    storage_pools:
+    - name: default
+      driver: {{ incus_storage_driver }}
+      config:
+        size: {{ incus_storage_size }}
+    networks:
+    - name: incusbr0
+      type: bridge
+      config:
+        ipv4.address: {{ incus_bridge_cidr }}
+        ipv4.nat: "true"
+        ipv6.address: none
+    profiles:
+    - name: default
+      devices:
+        root: {path: /, pool: default, type: disk}
+        eth0: {name: eth0, network: incusbr0, type: nic}
+    PRESEED
+  args:
+    executable: /bin/bash
+  when: incus_pool.rc != 0
+
+- name: read current incusbr0 subnet
+  ansible.builtin.command: incus network get incusbr0 ipv4.address
+  register: incus_br_cidr
+  changed_when: false
+
+- name: widen incusbr0 to the fleet subnet (idempotent -- only when different)
+  ansible.builtin.command: "incus network set incusbr0 ipv4.address {{ incus_bridge_cidr }}"
+  when: incus_br_cidr.stdout | trim != incus_bridge_cidr
+
+- name: kernel tuning for a dense container fleet (persistent drop-in)
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-incus-fleet.conf
+    mode: "0644"
+    content: |
+      # Managed by ansiblelab roles/incus -- supports a dense Incus fleet.
+      # IPv4 forwarding so NAT'd containers (incusbr0) can egress to the internet
+      # (without this, apt/downloads inside containers time out).
+      net.ipv4.ip_forward = 1
+      # ARP/neighbor table: room for thousands of container neighbors
+      # (default gc_thresh3=1024 -> kernel GCs ARP entries, net goes flaky).
+      net.ipv4.neigh.default.gc_thresh1 = 8192
+      net.ipv4.neigh.default.gc_thresh2 = 16384
+      net.ipv4.neigh.default.gc_thresh3 = 32768
+      net.ipv6.neigh.default.gc_thresh1 = 8192
+      net.ipv6.neigh.default.gc_thresh2 = 16384
+      net.ipv6.neigh.default.gc_thresh3 = 32768
+      # inotify: each container's systemd + journald consume instances/watches
+      fs.inotify.max_user_instances = 8192
+      fs.inotify.max_user_watches = 1048576
+      # per-uid keyring headroom (idmap maps each container root to a new uid)
+      kernel.keys.maxkeys = 5000
+      kernel.keys.root_maxkeys = 5000
+  register: incus_sysctl
+
+- name: apply sysctl drop-in (only when it changed)
+  ansible.builtin.command: sysctl --system
+  when: incus_sysctl.changed
+
+- name: report Incus version
+  ansible.builtin.command: incus version
+  register: incus_ver
+  changed_when: false
+
+- name: show version
+  ansible.builtin.debug:
+    msg: "{{ incus_ver.stdout_lines }}"
