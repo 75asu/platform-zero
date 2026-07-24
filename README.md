@@ -30,4 +30,4 @@ Each lab's README has its stack, prerequisites, and walkthrough.
 
 ## License
 
-[MIT](LICENSE) © 2026 Asutosh Panda
+[Apache-2.0](LICENSE) © 2026 Asutosh Panda
